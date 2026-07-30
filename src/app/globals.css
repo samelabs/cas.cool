@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+/* ─────────────────────────────────────────────
+   CAS.cool Design System
+   Light theme — chemistry-inspired.
+   All colors are semantic tokens: components
+   reference purpose, not raw hex values.
+   ───────────────────────────────────────────── */
+
+@theme {
+  /* Surfaces */
+  --color-canvas: #f8fafc;
+  --color-surface: #ffffff;
+  --color-surface-hover: #f1f5f9;
+  --color-surface-active: #e2e8f0;
+
+  /* Text */
+  --color-ink: #1e293b;
+  --color-ink-muted: #64748b;
+  --color-ink-faint: #94a3b8;
+
+  /* Lines */
+  --color-line: #e2e8f0;
+  --color-line-strong: #cbd5e1;
+
+  /* Brand */
+  --color-brand: #10b981;
+  --color-brand-strong: #059669;
+  --color-brand-tint: #ecfdf5;
+  --color-brand-ink: #047857;
+
+  /* Semantic */
+  --color-danger: #ef4444;
+  --color-danger-strong: #dc2626;
+  --color-danger-tint: #fef2f2;
+  --color-info: #3b82f6;
+  --color-warning: #f59e0b;
+  --color-warning-tint: #fffbeb;
+  --color-success: #22c55e;
+  --color-success-tint: #f0fdf4;
+
+  /* Fonts */
+  --font-sans: var(--font-inter);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+:root {
+  color-scheme: light;
+
+  /* Z-index scale — documented, single source of truth.
+     Usage: z-[var(--z-popover)] or via Tailwind arbitrary value. */
+  --z-base: 0;
+  --z-card-link: 0;
+  --z-card-interactive: 10;
+  --z-banner: 20;
+  --z-header: 30;
+  --z-reply-bar: 40;
+  --z-popover: 50;
+  --z-nav: 50;
+  --z-drawer: 60;
+  --z-toast: 100;
+  --z-overlay: 110;
+  --z-modal: 200;
+  --z-image-modal: 9999;
+}
+
+/* ─────────────────────────────────────────────
+   SCROLL & VIEWPORT ARCHITECTURE (system rule)
+   ─────────────────────────────────────────────
+   The entire app uses ONE viewport unit: dvh (dynamic viewport height).
+   NEVER use vh, h-screen, or min-h-screen — they include mobile browser
+   chrome and cause permanent 1-80px overflow → phantom scrollbars,
+   scroll-restoration glitches, and scrollIntoView() propagating to
+   ancestors and resetting internal scroll containers.
+
+   body uses `overflow-x: clip` (NOT hidden). Per CSS Overflow L3:
+   `hidden` forces `overflow-y` to compute to `auto`, which makes body
+   a scroll container / BFC. This breaks `position: sticky` on headers
+   (sticky targets the nearest scroll ancestor = body instead of window)
+   and causes unpredictable scroll-positioning on mobile.
+   `clip` prevents horizontal overflow WITHOUT creating a scroll container.
+   Input components are individually constrained with `w-full` + `min-w-0`
+   in their parent flex containers — the global overflow-x is a safety net,
+   not the primary defense.
+
+   Two scroll models, explicitly chosen per page:
+
+   MODEL A — body scroll (default, most pages)
+     Content flows naturally inside <main>. The window scrolls.
+     Sticky headers use `sticky top-0`.
+     <main> has `min-h-[100dvh]` so short pages still fill the viewport.
+
+   MODEL B — container scroll (messages/chat only)
+     The page wraps itself in a `h-[100dvh] flex flex-col overflow-hidden`
+     container. The header is `shrink-0`. The scroll area is `flex-1
+     min-h-0 overflow-y-auto`. Never use calc(100dvh - Npx) — let
+     flexbox compute the height.
+
+   SCROLL POSITIONING RULE:
+     To scroll a container to its bottom (chat), set
+     `el.scrollTop = el.scrollHeight` directly on the scroll container.
+     NEVER call element.scrollIntoView() — it propagates to ALL ancestor
+     scroll containers and resets their scroll, causing "jump to top" bugs.
+   ───────────────────────────────────────────── */
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: contain;
+  /* Disable browser scroll anchoring globally. We control scroll position
+     explicitly per-page (PostDetailClient useEffect + ResizeObserver).
+     Browser anchoring selects arbitrary viewport elements as anchors and
+     shifts scroll on async content load, fighting our positioning logic. */
+  overflow-anchor: none;
+}
+
+@keyframes banner-in {
+  from { transform: translateY(-100%); opacity: 0; }
+  to   { transform: translateY(0);     opacity: 1; }
+}
+
+body {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+/* Selection */
+::selection { background: rgba(16, 185, 129, 0.25); }
+
+/* Toast animation */
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Popover animation */
+@keyframes popoverIn {
+  from { opacity: 0; transform: scale(0.96) translateY(-4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* Share panel — slides up from bottom on mobile, scales in on desktop */
+@keyframes sharePanelIn {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Heart-pop (like animation) — pure GPU transform, zero CPU paint.
+   Replaces the default transition-colors color/fill/stroke repaint path
+   with a compositor-only scale animation, matching Twitter/X's tactile feel. */
+@keyframes heart-pop {
+  0%   { transform: scale(1); }
+  25%  { transform: scale(0.75); }
+  60%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+/* Line clamp */
+@utility line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Reusable component utilities */
+@utility surface-card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 1rem;
+}
+
+@utility input-field {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid var(--color-line-strong);
+  background-color: var(--color-surface);
+  padding: 0.625rem 0.75rem;
+  color: var(--color-ink);
+  font-size: 0.9375rem;
+  outline: none;
+}
+
+@utility input-focus {
+  border-color: var(--color-brand);
+}
+
+/* ── Pill / capsule button ────────────────────────────────────
+   Lightweight inline action button (remove banner, tags, etc).
+   Uses design tokens, no hardcoded values. */
+@utility pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  border-radius: 100px;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+@utility pill-danger {
+  color: var(--color-danger);
+  background-color: var(--color-danger-tint);
+
+  &:hover {
+    background-color: color-mix(in srgb, var(--color-danger) 12%, transparent);
+  }
+}
+
+/* Hide the mobile bottom nav while the reply bar is expanded to prevent
+   iOS Safari's fixed-position viewport-shift bug from dragging the nav
+   upward with the keyboard. */
+body[data-reply-bar-open="true"] .mobile-bottom-nav {
+  display: none;
+}

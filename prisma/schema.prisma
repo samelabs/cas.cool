@@ -1,0 +1,382 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum NotificationType {
+  LIKE
+  COMMENT
+  FOLLOW
+  REPOST
+  MESSAGE
+  MENTION
+  REPORT_RESOLVED
+}
+
+enum ReportTargetType {
+  POST
+  USER
+}
+
+enum ReportStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+/// User role — lowercase values match existing data (no migration needed).
+enum UserRole {
+  user
+  admin
+}
+
+/// Verification lifecycle states.
+enum UserVerificationStatus {
+  unverified
+  pending
+  verified
+}
+
+/// Account standing.
+enum UserAccountStatus {
+  active
+  restricted
+  suspended
+}
+
+/// VerificationSubmission review states.
+enum SubmissionStatus {
+  pending
+  approved
+  rejected
+}
+
+model User {
+  id                  String   @id @default(cuid())
+  email               String   @unique
+  username            String   @unique
+  displayName         String?
+  passwordHash        String
+  bio                 String?
+  avatar              String?
+  banner              String?
+  location            String?
+  website             String?
+  role                UserRole             @default(user)
+  verificationStatus  UserVerificationStatus @default(unverified)
+  verifiedAt          DateTime?
+  verificationExpiresAt DateTime?
+  status              UserAccountStatus    @default(active)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Denormalized counts — maintained by application-layer increment/decrement
+  // in the same transaction as the write. Eliminates per-profile _count
+  // subqueries (same pattern as Post.likeCount etc.).
+  postCount       Int @default(0)
+  followerCount   Int @default(0)
+  followingCount  Int @default(0)
+
+  posts               Post[]
+  likes               Like[]
+  bookmarks           Bookmark[]
+  reposts             Repost[]
+  notifications       Notification[]  @relation("NotificationRecipient")
+  notifFrom           Notification[]  @relation("NotificationActor")
+  sentMessages        DirectMessage[] @relation("MessageSender")
+  receivedMsgs        DirectMessage[] @relation("MessageReceiver")
+  conversations1      Conversation[] @relation("User1")
+  conversations2      Conversation[] @relation("User2")
+  following           Follow[]   @relation("Follower")
+  followers           Follow[]   @relation("Following")
+  sessions            Session[]
+  reportsFiled        Report[]   @relation("ReportReporter")
+  reportsAgainst      Report[]   @relation("ReportedUser")
+  reportsHandled      Report[]   @relation("ReportHandler")
+  verification        VerificationSubmission?
+  postViews           PostView[]
+  apiKeys             ApiKey[]
+
+  @@index([verificationStatus])
+  @@index([status])
+  @@index([createdAt])
+}
+
+/// API access keys for verified members (external API authentication).
+/// Raw key is SHA-256 hashed before storage; only shown once at creation.
+model ApiKey {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name        String                    // User-given label, e.g. "My chemistry bot"
+  keyHash     String    @unique         // SHA-256 hex of raw key — indexed for O(1) lookup
+  prefix      String                    // First 8 chars of random part for UI display
+  scopes      String[]  @default([])    // Reserved for future scope control (empty = all)
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?                 // Optional expiry; null = no expiry
+  revokedAt   DateTime?                 // Soft revoke; null = active
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// Identity verification documents submitted by users for admin review.
+/// One active submission per user (userId is @unique — upsert on resubmit).
+model VerificationSubmission {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  idName        String                // Legal name on the ID document
+  idNumber      String                // ID card number (any country)
+  idFrontImage  String                // Front of ID → /uploads/xxx.webp
+  idBackImage   String                // Back of ID → /uploads/xxx.webp
+
+  status        SubmissionStatus @default(pending)
+  reviewedBy    String?               // Admin userId who reviewed
+  reviewedAt    DateTime?             // Approval/rejection timestamp
+  expiresAt     DateTime?             // Verification expiry date
+  reviewNote    String?               // Admin note (e.g. rejection reason)
+
+  submittedAt   DateTime  @default(now())
+
+  @@index([status])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Post {
+  id           String     @id @default(cuid())
+  authorId     String
+  author       User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parentId       String?    // Direct reply target (who you reply to — for @context + notifications)
+  parent         Post?      @relation("PostReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies        Post[]     @relation("PostReplies")
+
+  // Flat conversation grouping. Root posts: null. All replies: root post's id.
+  // Enables "show entire conversation" without recursive parentId traversal.
+  conversationId String?
+  conversation   Post?      @relation("ConversationPosts", fields: [conversationId], references: [id], onDelete: SetNull)
+  convPosts      Post[]     @relation("ConversationPosts")
+  content      String
+  quotePostId  String?    // Quote post (Twitter-style retweet with comment)
+  quotedPost   Post?      @relation("PostQuotes", fields: [quotePostId], references: [id], onDelete: Cascade)
+  quotingPosts Post[]     @relation("PostQuotes")
+  images       String[]   @default([])
+  views        Int        @default(0)
+  // Denormalized engagement counts — maintained by application-layer
+  // increment/decrement on like/repost/bookmark/reply toggle.
+  // Eliminates per-post COUNT subqueries in feed serialization (H3/M14).
+  likeCount     Int      @default(0)
+  replyCount    Int      @default(0)
+  repostCount   Int      @default(0)
+  bookmarkCount Int      @default(0)
+  shortCode    String?    @unique  // 8-char base62 for short URLs (/p/xxxx)
+  isPinned     Boolean    @default(false)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  editedAt     DateTime?  // Explicit edit timestamp — set ONLY when content is edited (not on view-increment etc.)
+  deletedAt    DateTime?  // Soft delete marker — null = active. When set, content/images are cleared but the record (and its replies) survive.
+
+  // === Chemical tagging (M2M relation) ===
+  chemicals    Chemical[] // CAS number associations (zero or more)
+
+  likes        Like[]
+  bookmarks    Bookmark[]
+  reposts      Repost[]
+  reports      Report[]   @relation("ReportedPost")
+  postViews    PostView[]
+  notifications Notification[]  @relation("NotificationPost")
+
+  @@index([authorId])
+  @@index([parentId])
+  @@index([conversationId])
+  @@index([quotePostId])
+  @@index([createdAt])
+}
+
+/// Chemical entity — one row per unique CAS Registry Number.
+/// Created on first use (post composition or manual entry).
+/// Stores canonical metadata that all referencing posts share.
+model Chemical {
+  id          String   @id @default(cuid())
+  casNumber   String   @unique             // CAS Registry Number (e.g. "64-17-5") — primary identifier, user-creatable
+  name        String?                      // Semicolon-separated multi-name; system-maintained (PubChem etc.)
+  smiles      String?                      // SMILES notation for 2D molecular structure; system-maintained
+  banned      Boolean  @default(false)     // Prohibited/restricted chemical flag
+  postCount   Int      @default(0)          // Denormalized count for fast trending
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  posts       Post[]
+
+  @@index([postCount])
+  @@index([banned])
+}
+
+/// Tag entity — REMOVED. Posts now use Chemical (CAS number) exclusively.
+/// Retaining as comment for migration reference; model deleted below.
+
+model Like {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([userId])
+}
+
+model Bookmark {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([userId])
+}
+
+model Repost {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([userId])
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@index([followingId])
+}
+
+model Conversation {
+  id         String   @id @default(cuid())
+  user1Id    String
+  user1      User     @relation("User1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2Id    String
+  user2      User     @relation("User2", fields: [user2Id], references: [id], onDelete: Cascade)
+  lastAt     DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  // Soft-delete: each user can independently "delete" (hide) the conversation.
+  // When BOTH sides have deleted, the conversation + all messages are
+  // permanently removed by the DELETE API. This mirrors WhatsApp/Telegram
+  // semantics where deleting on your side doesn't remove it for the other.
+  deletedBy1 Boolean  @default(false)
+  deletedBy2 Boolean  @default(false)
+
+  messages   DirectMessage[]
+
+  @@unique([user1Id, user2Id])
+  @@index([user2Id])
+}
+
+model DirectMessage {
+  id              String      @id @default(cuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId        String
+  sender          User        @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  receiverId      String
+  receiver        User        @relation("MessageReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  content         String
+  readAt          DateTime?
+  createdAt       DateTime    @default(now())
+
+  @@index([conversationId, createdAt])
+  @@index([receiverId, readAt])
+  @@index([senderId])
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String           // recipient
+  user        User             @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  fromId      String           // actor
+  from        User             @relation("NotificationActor", fields: [fromId], references: [id], onDelete: Cascade)
+  type        NotificationType
+  postId      String?
+  post        Post?            @relation("NotificationPost", fields: [postId], references: [id], onDelete: Cascade)
+  read        Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+
+  @@index([userId, read])
+  @@index([userId, type])
+  @@index([userId, fromId, type])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+
+  // Atomic dedup: INSERT ... ON CONFLICT DO UPDATE for postId-based types.
+  // Null-postId types (FOLLOW, MESSAGE) use application-level dedup —
+  // PostgreSQL treats NULL as distinct, so the constraint doesn't apply to them.
+  @@unique([userId, fromId, type, postId])
+}
+
+model Report {
+  id              String           @id @default(cuid())
+  reporterId      String
+  reporter        User             @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  targetType      ReportTargetType
+  // The reported post (when targetType = POST). Nullable so user-only reports work.
+  postId          String?
+  post            Post?            @relation("ReportedPost", fields: [postId], references: [id], onDelete: Cascade)
+  // The reported user (always set — for POST reports, the post author; for USER reports, the user themselves).
+  reportedUserId  String
+  reportedUser    User             @relation("ReportedUser", fields: [reportedUserId], references: [id], onDelete: Cascade)
+  // Preset reason key (spam, harassment, etc.) + optional free-text detail.
+  reason          String
+  detail          String?
+  status          ReportStatus     @default(PENDING)
+  handledBy       String?
+  handledByUser   User?            @relation("ReportHandler", fields: [handledBy], references: [id], onDelete: SetNull)
+  handledAt       DateTime?
+  adminNote       String?
+  createdAt       DateTime         @default(now())
+
+  @@index([status, createdAt])
+  @@index([reportedUserId])
+  @@index([reporterId])
+}
+
+/// Per-user view deduplication (M6). One row per (post, user) pair.
+/// Existence of a row = "this user has already viewed this post" → no re-increment.
+model PostView {
+  id        String   @id @default(cuid())
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
+  @@index([userId])
+}
