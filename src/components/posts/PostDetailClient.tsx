@@ -371,7 +371,7 @@ export function PostDetailClient({
             their <article> to z-50 at runtime, but that only works if the
             MainPost wrapper creates a stacking context that outranks the
             sibling reply cards (z-10). */}
-        <div ref={mainPostRef} className="relative z-30">
+        <div ref={mainPostRef} className="relative z-20">
           <MainPost post={mainPost} onDeleted={handleMainPostDeleted} authorFollowed={authorFollowed} />
         </div>
 

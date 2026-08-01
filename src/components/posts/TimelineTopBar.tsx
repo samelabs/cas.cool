@@ -24,7 +24,7 @@ export default function TimelineTopBar({
   if (!currentUser) {
     return (
       <div className="border-b border-line bg-brand-tint/30">
-        <div className="flex flex-col items-center gap-3 px-6 py-6 text-center">
+        <div className="flex flex-col items-center gap-3 px-4 py-6 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/10 ring-1 ring-brand/20">
             <FlaskIcon className="h-6 w-6 text-brand" />
           </div>

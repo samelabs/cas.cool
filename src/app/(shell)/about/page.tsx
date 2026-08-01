@@ -13,8 +13,8 @@ export default function AboutPage() {
     <>
       <PageHeader title={t.about.title} />
 
-      <div className="px-6 py-8">
-        <div className="mx-auto max-w-2xl">
+      <div className="px-4 py-8">
+        <div>
           {/* Hero */}
           <div className="mb-8 text-center">
             <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-brand-tint text-brand">

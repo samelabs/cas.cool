@@ -136,7 +136,7 @@ export function ProfileForm({ currentUser }: { currentUser: SafeUser }) {
   const labelCls = 'mb-1 block text-sm font-medium text-ink-muted'
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-4">
+    <div className="px-4 py-4">
       {/* Banner upload — verified only.
           Clicking opens a file picker; selecting a file opens a preview
           modal (with the exact h-48 + object-cover crop the profile page

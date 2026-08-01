@@ -127,7 +127,7 @@ export function ApiKeysClient({
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-4">
+    <div className="px-4 py-4">
       <p className="mb-6 text-sm text-ink-muted">{t.api.description}</p>
 
       {/* Verification gate */}

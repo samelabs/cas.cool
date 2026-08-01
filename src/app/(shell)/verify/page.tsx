@@ -32,7 +32,7 @@ export default async function VerifyPage() {
     <>
       <PageHeader title={t.verify.title} backHref="/" />
 
-      <div className="mx-auto max-w-2xl px-4 py-4">
+      <div className="px-4 py-4">
 
         {/* ── Status banner ── */}
         {user.verificationStatus === 'verified' && (

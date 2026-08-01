@@ -3,6 +3,7 @@ import { ProfileCard } from '@/components/profile/ProfileCard'
 import { SearchIcon, TrendingIcon, SparklesIcon } from '@/components/icons'
 import type { SafeUser } from '@/lib/types'
 import { t } from '@/lib/i18n'
+import { VERSION, GITHUB_URL } from '@/lib/version'
 
 export interface TrendingChemical {
   casNumber: string
@@ -107,7 +108,7 @@ export function RightPanel({ trending = [], suggestions = [] }: RightPanelProps)
           <Link href="/explore" className="hover:text-ink-muted">{t.nav.explore}</Link> ·{' '}
           <Link href="/settings" className="hover:text-ink-muted">{t.nav.settings}</Link>
         </p>
-        <p className="mt-1">© {new Date().getFullYear()} CAS.cool</p>
+        <p className="mt-1">© {new Date().getFullYear()} CAS.cool · <Link href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="hover:text-ink-muted">v{VERSION}</Link></p>
       </footer>
     </div>
   )

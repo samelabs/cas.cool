@@ -42,7 +42,7 @@ export function SecurityForm() {
   const labelCls = 'mb-1 block text-sm font-medium text-ink-muted'
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-4">
+    <div className="px-4 py-4">
       <form onSubmit={savePassword} className="max-w-md space-y-4">
         <div>
           <label className={labelCls}>{t.settings.currentPassword}</label>

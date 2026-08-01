@@ -425,7 +425,7 @@ function TimelineFeedInner({
       )}
 
       {posts.length === 0 && !isValidating ? (
-        <div className="px-6 py-16 text-center text-ink-muted">
+        <div className="px-4 py-16 text-center text-ink-muted">
           <FlaskIcon className="mx-auto mb-3 h-10 w-10 text-ink-faint" />
           <p className="text-lg font-semibold text-ink-muted">
             {tab === 'following'

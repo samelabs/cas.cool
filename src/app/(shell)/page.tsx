@@ -47,7 +47,7 @@ export default async function HomePage({
        * Avatar opens MobileMenuDrawer (slide-in panel with full nav).
        * On desktop (md+), logo is left-aligned (sidebar handles navigation).
        */}
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur-md md:hidden">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur-md">
         <div className="flex h-[53px] items-center px-4">
           {me ? (
             <div className="md:hidden">

@@ -25,7 +25,7 @@ export default async function NotificationsPage() {
       <PageHeader title={t.notifications.title} subtitle={t.nav.activities(notifications.length)} backHref="/" />
 
       {notifications.length === 0 ? (
-        <div className="px-6 py-16 text-center text-ink-muted">
+        <div className="px-4 py-16 text-center text-ink-muted">
           <p className="text-lg font-semibold text-ink-muted">{t.notifications.emptyTitle}</p>
           <p className="mt-1 text-sm">
             {t.notifications.emptyHint}

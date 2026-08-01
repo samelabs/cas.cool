@@ -187,7 +187,7 @@ function InfinitePostListInner({
   if (posts.length === 0 && !isValidating) {
     if (hideEmpty) return null
     return (
-      <div className="flex flex-col items-center px-6 py-16 text-center text-ink-muted">
+      <div className="flex flex-col items-center px-4 py-16 text-center text-ink-muted">
         <FlaskIcon className="h-10 w-10 text-ink-faint" />
         <p className="mt-3 text-lg font-semibold text-ink-muted">{emptyMessage}</p>
       </div>

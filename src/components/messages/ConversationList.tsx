@@ -57,7 +57,7 @@ export default function ConversationList({
 
   if (items.length === 0) {
     return (
-      <div className="px-6 py-16 text-center text-ink-muted">
+      <div className="px-4 py-16 text-center text-ink-muted">
         <p className="text-lg font-semibold text-ink-muted">{t.messages.noConversations}</p>
         <p className="mt-1 text-sm">
           Start a conversation from someone&rsquo;s profile.

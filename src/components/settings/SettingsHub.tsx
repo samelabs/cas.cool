@@ -39,7 +39,7 @@ export function SettingsHub({ user }: { user: SafeUser }) {
   ]
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-4">
+    <div className="px-4 py-4">
       {/* Verification status banner */}
       <div className="mb-4 flex items-center justify-between rounded-xl border border-line bg-surface p-4">
         <div className="flex items-center gap-2">
