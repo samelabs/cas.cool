@@ -12,6 +12,7 @@ import { FEED_PAGE_SIZE } from '@/lib/feed-constants'
 import { usePullToRefresh } from '@/lib/usePullToRefresh'
 import type { SafePost } from '@/lib/types'
 import { getTimeline, getNewPostCount } from '@/actions/posts'
+import { swrFetcher } from '@/lib/api-client'
 
 /** Build the cache key for a given page. This string is now purely a SWR
  *  cache identifier — the fetcher parses it back into getTimeline params. */
@@ -26,18 +27,10 @@ interface Page {
 }
 
 /**
- * SWR fetcher — parses the cache key (a URL-shaped string) back into
- * TimelineParams and calls the getTimeline Server Action.
+ * SWR fetcher — the cache key is a real URL (/api/posts?tab=...&cursor=...).
+ * swrFetcher does a same-origin GET and parses JSON.
  */
-const fetcher = async (url: string): Promise<Page> => {
-  const params = new URL(url, 'http://localhost').searchParams
-  const tab = (params.get('tab') ?? 'latest') as 'latest' | 'following'
-  const take = params.get('take') ? Number(params.get('take')) : undefined
-  const cursor = params.get('cursor') ?? undefined
-  const result = await getTimeline({ tab, take, cursor })
-  if (!result.ok) throw new Error(t.errors.failedToLoadPosts)
-  return result.data
-}
+const fetcher = (url: string): Promise<Page> => swrFetcher<Page>(url)
 
 export interface TimelineFeedProps {
   initialPosts: SafePost[]

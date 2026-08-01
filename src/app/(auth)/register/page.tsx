@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/components/Providers'
 import { useToast } from '@/components/ui/Toast'
 import { sanitizeUsername } from '@/lib/utils'
-import { checkUsernameAvailable, register } from '@/actions/auth'
+import { get, post } from '@/lib/api-client'
+import type { SafeUser } from '@/lib/types'
 
 type CheckState = 'idle' | 'checking' | 'taken' | 'free'
 
@@ -50,8 +51,8 @@ export default function RegisterPage() {
     setCheck('checking')
     timer.current = setTimeout(async () => {
       try {
-        const result = await checkUsernameAvailable(cleaned)
-        if (result.ok) {
+        const result = await get<{ available: boolean }>('/api/auth/check-username?username=' + encodeURIComponent(cleaned))
+        if (result.ok && result.data) {
           setCheck(result.data.available ? 'free' : 'taken')
         } else {
           setCheck('idle')
@@ -85,14 +86,14 @@ export default function RegisterPage() {
 
     setLoading(true)
     try {
-      const result = await register({
+      const result = await post<{ user: SafeUser }>('/api/auth/register', {
         displayName: displayName.trim() || undefined,
         username,
         email: email.trim(),
         password,
       })
       if (!result.ok) throw new Error(result.error || t.auth.errRegisterFailed)
-      setAuthUser(result.data.user)
+      setAuthUser(result.data!.user)
       showToast(t.auth.accountCreated, 'success', 2500)
       router.push(`/u/${username}`)
       router.refresh()

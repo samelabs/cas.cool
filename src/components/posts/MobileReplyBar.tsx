@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast'
 import { extractCASNumber } from '@/lib/utils'
 import { maxPostLength } from '@/lib/permissions'
 import type { SafePost } from '@/lib/types'
-import { createPost } from '@/actions/posts'
+import { post } from '@/lib/api-client'
 
 export interface MobileReplyBarProps {
   postId: string
@@ -94,7 +94,7 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
     setSubmitting(true)
     try {
       const casNumber = extractCASNumber(content)
-      const result = await createPost({
+      const result = await post<SafePost>('/api/posts', {
         content,
         parentId: postId,
         casNumbers: casNumber ? [casNumber] : [],
@@ -106,7 +106,7 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
       // Action returns the full serialized post — optimistic update via callback.
       // No router.refresh() — that would destroy the DOM, lose focus, and
       // cause the "input drift" bug on mobile.
-      const created = result.data
+      const created = result.data!
       onReply?.(created)
       setContent('')
       setExpanded(false)

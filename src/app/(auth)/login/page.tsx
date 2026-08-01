@@ -7,7 +7,8 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/components/Providers'
 import { useToast } from '@/components/ui/Toast'
-import { login } from '@/actions/auth'
+import { post } from '@/lib/api-client'
+import type { SafeUser } from '@/lib/types'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -23,9 +24,9 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const result = await login(email.trim(), password)
+      const result = await post<{ user: SafeUser }>('/api/auth/login', { identifier: email.trim(), password })
       if (!result.ok) throw new Error(result.error || t.auth.invalidCredentials)
-      setAuthUser(result.data.user)
+      setAuthUser(result.data!.user)
       showToast(t.auth.welcomeBack, 'success', 2000)
       router.push('/')
       router.refresh()

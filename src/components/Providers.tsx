@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import type { SafeUser } from '@/lib/types'
 import { ToastProvider, useToast } from '@/components/ui/Toast'
 import { ReportProvider } from '@/components/ReportDialog'
-import { logout as logoutAction } from '@/actions/auth'
+import { post } from '@/lib/api-client'
 
 interface AuthContextValue {
   currentUser: SafeUser | null
@@ -55,7 +55,7 @@ function AuthProvider({
   }, [])
 
   const logout = useCallback(async () => {
-    await logoutAction().catch(() => {})
+    await post('/api/auth/logout').catch(() => {})
     setCurrentUser(null)
     showToast(t.auth.signedOut, 'info', 2000)
     router.push('/login')

@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/cn'
 import { timeAgo } from '@/lib/utils'
 import type { SafeUser } from '@/lib/types'
-import { deleteConversation } from '@/actions/social'
+import { del } from '@/lib/api-client'
 
 export interface ConversationItem {
   id: string
@@ -40,7 +40,7 @@ export default function ConversationList({
     setItems((prev) => prev.filter((c) => c.id !== id))
     setDeletingId(id)
     try {
-      const result = await deleteConversation(id)
+      const result = await del('/api/messages/' + id)
       if (!result.ok) throw new Error(result.error || t.errors.failed)
       showToast(t.messages.conversationDeleted(name), 'success', 2000)
     } catch {

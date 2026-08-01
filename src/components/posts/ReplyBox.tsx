@@ -10,7 +10,7 @@ import { cn } from '@/lib/cn'
 import { extractCASNumber } from '@/lib/utils'
 import { maxPostLength } from '@/lib/permissions'
 import type { SafePost } from '@/lib/types'
-import { createPost } from '@/actions/posts'
+import { post } from '@/lib/api-client'
 
 export interface ReplyBoxProps {
   parentId: string
@@ -38,7 +38,7 @@ export default function ReplyBox({ parentId, onReply }: ReplyBoxProps) {
     setSubmitting(true)
     try {
       const casNumber = extractCASNumber(content)
-      const result = await createPost({
+      const result = await post<SafePost>('/api/posts', {
         content,
         parentId,
         casNumbers: casNumber ? [casNumber] : [],
@@ -49,7 +49,7 @@ export default function ReplyBox({ parentId, onReply }: ReplyBoxProps) {
       }
       // Action returns the full serialized post — feed it to the parent
       // for an instant optimistic update. No router.refresh() needed.
-      const created = result.data
+      const created = result.data!
       onReply?.(created)
       setContent('')
       showToast(t.messages.replyPosted, 'success', 2000)

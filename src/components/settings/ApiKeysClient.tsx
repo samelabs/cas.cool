@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useToast } from '@/components/ui/Toast'
 import { t } from '@/lib/i18n'
 import { cn } from '@/lib/cn'
-import { listApiKeys, createApiKey, revokeApiKey } from '@/actions/account'
+import { get, post, del } from '@/lib/api-client'
 import { AlertIcon, XIcon } from '@/components/icons'
 
 interface ApiKey {
@@ -39,8 +39,8 @@ export function ApiKeysClient({
 
   const loadKeys = useCallback(async () => {
     try {
-      const result = await listApiKeys()
-      if (result.ok) {
+      const result = await get<{ keys: ApiKey[] }>('/api/account/api-keys')
+      if (result.ok && result.data) {
         setKeys(result.data.keys as ApiKey[])
       }
     } catch {
@@ -56,8 +56,8 @@ export function ApiKeysClient({
     let cancelled = false
     ;(async () => {
       try {
-        const result = await listApiKeys()
-        if (!cancelled && result.ok) {
+        const result = await get<{ keys: ApiKey[] }>('/api/account/api-keys')
+        if (!cancelled && result.ok && result.data) {
           setKeys(result.data.keys as ApiKey[])
         }
       } catch {
@@ -73,7 +73,7 @@ export function ApiKeysClient({
     if (!name.trim()) return
     setCreating(true)
     try {
-      const result = await createApiKey(name.trim())
+      const result = await post<CreatedKey>('/api/account/api-keys', { name: name.trim() })
       if (!result.ok) {
         showToast(result.error || t.errors.unexpectedError, 'error')
         return
@@ -93,7 +93,7 @@ export function ApiKeysClient({
     if (!confirm(t.api.revokeConfirm)) return
     setRevokingId(id)
     try {
-      const result = await revokeApiKey(id)
+      const result = await del('/api/account/api-keys/' + id)
       if (!result.ok) {
         showToast(result.error || t.errors.unexpectedError, 'error')
         return

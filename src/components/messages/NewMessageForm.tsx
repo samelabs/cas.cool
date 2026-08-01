@@ -7,7 +7,7 @@ import { AutoResizeTextarea } from '@/components/ui/AutoResizeTextarea'
 import { useToast } from '@/components/ui/Toast'
 import { t } from '@/lib/i18n'
 import type { SafeUser } from '@/lib/types'
-import { startConversation } from '@/actions/social'
+import { post } from '@/lib/api-client'
 
 export interface NewMessageFormProps {
   recipient: SafeUser
@@ -39,12 +39,12 @@ export default function NewMessageForm({ recipient }: NewMessageFormProps) {
     if (!text || sending) return
     setSending(true)
     try {
-      const result = await startConversation(recipient.id, text)
+      const result = await post<{ conversationId: string }>('/api/messages', { recipientId: recipient.id, content: text })
       if (!result.ok) {
         throw new Error(result.error || t.errors.failedToSendMessage)
       }
       // Redirect to the conversation thread
-      router.push(`/messages/${result.data.conversationId}`)
+      router.push(`/messages/${result.data!.conversationId}`)
     } catch {
       showToast(t.messages.messageFailed, 'error')
     } finally {

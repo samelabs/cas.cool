@@ -8,9 +8,7 @@ import { SWRConfig } from 'swr'
 import { PostCard } from '@/components/posts/PostCard'
 import { FlaskIcon } from '@/components/icons'
 import { postUrl } from '@/lib/shortCode'
-
-import { getTimeline } from '@/actions/posts'
-import { searchPosts } from '@/actions/search'
+import { swrFetcher } from '@/lib/api-client'
 import type { SafePost } from '@/lib/types'
 
 interface Page {
@@ -19,47 +17,10 @@ interface Page {
 }
 
 /**
- * SWR fetcher that parses the legacy URL-based cache key and dispatches
- * to the appropriate Server Action. The basePath URL is kept as the SWR
- * cache key for compatibility with SWRConfig fallback and optimistic
- * mutations, but no HTTP request is made.
+ * SWR fetcher — the cache key is a real URL (/api/posts?... or /api/search?...).
+ * swrFetcher does a same-origin GET and parses JSON.
  */
-const fetcher = async (url: string): Promise<Page> => {
-  const parsed = new URL(url, 'http://localhost')
-  const sp = parsed.searchParams
-
-  // Search route
-  if (parsed.pathname === '/api/search') {
-    const q = sp.get('q') || ''
-    const cursor = sp.get('cursor') ?? undefined
-    const take = parseInt(sp.get('take') || '0') || undefined
-    const result = await searchPosts(q, cursor, take)
-    if (!result.ok) throw new Error(t.errors.failedToLoadPosts)
-    return { posts: result.data.posts, nextCursor: result.data.nextCursor }
-  }
-
-  // Posts route — extract all parameters
-  const tab = sp.get('tab') === 'following' ? 'following' : sp.get('tab') === 'latest' ? 'latest' : 'foryou'
-  const cursor = sp.get('cursor') ?? undefined
-  const take = parseInt(sp.get('take') || '0') || undefined
-
-  const result = await getTimeline({
-    tab,
-    cursor,
-    take,
-    cas: sp.get('cas') ?? undefined,
-    author: sp.get('author') ?? undefined,
-    scope: sp.get('scope') === 'replies' ? 'replies' : sp.get('scope') === 'media' ? 'media' : undefined,
-    likedBy: sp.get('likedBy') ?? undefined,
-    bookmarkedBy: sp.get('bookmarkedBy') ?? undefined,
-    repliesOf: sp.get('repliesOf') ?? undefined,
-    conversationOf: sp.get('conversationOf') ?? undefined,
-    since: sp.get('since') ?? undefined,
-  })
-
-  if (!result.ok) throw new Error(result.error || t.errors.failedToLoadPosts)
-  return result.data
-}
+const fetcher = (url: string): Promise<Page> => swrFetcher<Page>(url)
 
 export interface InfinitePostListHandle {
   /** Append a post to the first page of the SWR infinite cache (optimistic). */

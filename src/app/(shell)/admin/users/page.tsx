@@ -5,12 +5,14 @@ import { t } from '@/lib/i18n'
 import Link from 'next/link'
 import { Avatar } from '@/components/ui/Avatar'
 import { useToast } from '@/components/ui/Toast'
-import {
-  adminListUsers,
-  adminUpdateUserStatus,
-  adminVerifyUser,
-  adminRevokeVerification,
-} from '@/actions/admin'
+import { get, post, patch } from '@/lib/api-client'
+
+function usersUrl(q: string, status: string): string {
+  const p = new URLSearchParams()
+  if (q) p.set('q', q)
+  if (status) p.set('status', status)
+  return `/api/admin/users?${p.toString()}`
+}
 
 interface AdminUser {
   id: string
@@ -47,12 +49,11 @@ export default function AdminUsersPage() {
     if (!searchQuery && !statusFilter) return
     startTransition(async () => {
       try {
-        const result = await adminListUsers({
-          q: searchQuery || undefined,
-          status: statusFilter || undefined,
-        })
-        if (!result.ok) throw new Error()
-        setUsers(result.data.users as AdminUser[])
+        const result = await get<{ users: AdminUser[] }>(
+          usersUrl(searchQuery, statusFilter),
+        )
+        if (!result.ok) throw new Error(result.error ?? undefined)
+        setUsers(result.data!.users)
       } catch {
         showToast(t.admin.usersLoadFailed, 'error')
       }
@@ -67,19 +68,18 @@ export default function AdminUsersPage() {
   const changeStatus = async (userId: string, newStatus: string) => {
     setActing(userId)
     try {
-      const result = await adminUpdateUserStatus(
-        userId,
-        newStatus as 'active' | 'restricted' | 'suspended',
-      )
+      const result = await patch(`/api/admin/users/${userId}`, { status: newStatus })
       if (!result.ok) {
         throw new Error(result.error || t.errors.failed)
       }
       showToast(`Status changed to ${newStatus}`, 'success')
       startTransition(async () => {
         try {
-          const result = await adminListUsers({ q: searchQuery || undefined, status: statusFilter || undefined })
-          if (!result.ok) throw new Error()
-          setUsers(result.data.users as AdminUser[])
+          const result = await get<{ users: AdminUser[] }>(
+            usersUrl(searchQuery, statusFilter),
+          )
+          if (!result.ok) throw new Error(result.error ?? undefined)
+          setUsers(result.data!.users)
         } catch {
           showToast(t.admin.usersLoadFailed, 'error')
         }
@@ -95,17 +95,19 @@ export default function AdminUsersPage() {
     setActing(userId)
     try {
       const result = currentlyVerified
-        ? await adminRevokeVerification(userId)
-        : await adminVerifyUser(userId)
+        ? await post(`/api/admin/users/${userId}/revoke-verification`)
+        : await post(`/api/admin/users/${userId}/verify`)
       if (!result.ok) {
         throw new Error(result.error || t.errors.failed)
       }
       showToast(currentlyVerified ? t.admin.verificationRevoked : t.admin.userVerified, 'success')
       startTransition(async () => {
         try {
-          const result = await adminListUsers({ q: searchQuery || undefined, status: statusFilter || undefined })
-          if (!result.ok) throw new Error()
-          setUsers(result.data.users as AdminUser[])
+          const result = await get<{ users: AdminUser[] }>(
+            usersUrl(searchQuery, statusFilter),
+          )
+          if (!result.ok) throw new Error(result.error ?? undefined)
+          setUsers(result.data!.users)
         } catch {
           showToast(t.admin.usersLoadFailed, 'error')
         }

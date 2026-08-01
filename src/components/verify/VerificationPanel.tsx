@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
 import { t } from '@/lib/i18n'
-import { uploadVerificationImage, submitVerification } from '@/actions/account'
+import { postForm, post } from '@/lib/api-client'
 
 export interface VerificationPanelProps {
   variant?: 'initial' | 'supplemental'
@@ -33,8 +33,11 @@ export default function VerificationPanel({ variant = 'initial', existingSubmiss
   const backInputRef = useRef<HTMLInputElement>(null)
 
   const uploadFile = async (file: File): Promise<string | null> => {
-    const result = await uploadVerificationImage(file)
-    if (!result.ok) return null
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('purpose', 'verification')
+    const result = await postForm<{ url: string; filename: string; bytes: number }>('/api/upload', formData)
+    if (!result.ok || !result.data) return null
     return result.data.url
   }
 
@@ -50,7 +53,7 @@ export default function VerificationPanel({ variant = 'initial', existingSubmiss
     }
     setSubmitting(true)
     try {
-      const result = await submitVerification({
+      const result = await post('/api/account/verification', {
         idName: idName.trim(),
         idNumber: idNumber.trim(),
         idFrontImage,

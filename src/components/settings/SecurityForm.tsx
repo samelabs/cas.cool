@@ -4,7 +4,7 @@ import { useState, type FormEvent } from 'react'
 import { t } from '@/lib/i18n'
 import { Button } from '@/components/ui/Button'
 import { useToast } from '@/components/ui/Toast'
-import { changePassword } from '@/actions/profile'
+import { post } from '@/lib/api-client'
 
 export function SecurityForm() {
   const { showToast } = useToast()
@@ -25,7 +25,7 @@ export function SecurityForm() {
     }
     setSavingPassword(true)
     try {
-      const result = await changePassword(currentPassword, newPassword)
+      const result = await post('/api/me/password', { currentPassword, newPassword })
       if (!result.ok) throw new Error(result.error || t.settings.passwordChangeFailed)
       setCurrentPassword('')
       setNewPassword('')

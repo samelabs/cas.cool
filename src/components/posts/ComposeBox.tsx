@@ -13,11 +13,9 @@ import { postUrl } from '@/lib/shortCode'
 import { cn } from '@/lib/cn'
 import { maxPostLength, canUploadMedia } from '@/lib/permissions'
 import Link from 'next/link'
-import { uploadImage as uploadImageAction } from '@/actions/profile'
-import { compressImage } from '@/lib/client-image'
 import type { SafePost } from '@/lib/types'
 import { t } from '@/lib/i18n'
-import { createPost, updatePost } from '@/actions/posts'
+import { post, patch, postForm } from '@/lib/api-client'
 
 const CAS_FORMAT = /^\d{2,7}-\d{2}-\d$/
 const MAX_IMAGES = 4
@@ -79,7 +77,6 @@ export function ComposeBox({
   const canSubmit = !empty && !overLimit && !submitting
   const mediaAllowed = canUploadMedia(currentUser)
 
-  const [compressing, setCompressing] = useState(false)
 
   const onPickImages = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? [])
@@ -95,26 +92,9 @@ export function ComposeBox({
     }
     const toAdd = files.slice(0, room)
 
-    // Client-side compression: resize + WebP encode before upload.
-    // Keeps images under the Server Action body limit and gives
-    // a friendly error here instead of a framework 413.
-    setCompressing(true)
-    try {
-      const compressed: File[] = []
-      for (const file of toAdd) {
-        const result = await compressImage(file)
-        if (!result) {
-          showToast(`Unsupported image: ${file.name}`, 'error')
-          continue
-        }
-        compressed.push(new File([result.blob], file.name.replace(/\.[^.]+$/, '.webp'), { type: 'image/webp' }))
-      }
-      setImages((prev) => [...prev, ...compressed])
-    } catch {
-      showToast(t.errors.uploadFailed, 'error')
-    } finally {
-      setCompressing(false)
-    }
+    // Images are uploaded as-is; server-side processAndStoreImage handles
+    // compression (sharp → WebP), EXIF rotation, and size limits.
+    setImages((prev) => [...prev, ...toAdd])
     if (fileRef.current) fileRef.current.value = ''
   }
 
@@ -166,14 +146,17 @@ export function ComposeBox({
     const allCas = [...new Set([...casNumbers, ...(detectedCAS ? [detectedCAS] : [])])]
 
     try {
-      // ── Upload new image files via Server Action ──
+      // ── Upload new image files via /api/upload ──
       const uploadedUrls: string[] = []
       for (const file of images) {
-        const result = await uploadImageAction(file, 'post')
+        const fd = new FormData()
+        fd.append('file', file)
+        fd.append('purpose', 'post')
+        const result = await postForm<{ url: string; filename: string; bytes: number }>('/api/upload', fd)
         if (!result.ok) {
           throw new Error(result.error || t.errors.uploadFailed)
         }
-        uploadedUrls.push(result.data.url)
+        uploadedUrls.push(result.data!.url)
       }
 
       // Final image list: kept existing images (edit) + newly uploaded
@@ -181,7 +164,10 @@ export function ComposeBox({
 
       if (editPost) {
         // --- Edit mode ---
-        const result = await updatePost(editPost.id, content, finalImages, allCas)
+        const result = await patch<SafePost>(
+          '/api/posts/' + editPost.shortCode,
+          { content, images: finalImages, casNumbers: allCas },
+        )
         if (!result.ok) {
           throw new Error(result.error || t.compose.failedToEdit)
         }
@@ -189,7 +175,7 @@ export function ComposeBox({
         router.push(postUrl(editPost))
       } else {
         // --- Create mode ---
-        const result = await createPost({
+        const result = await post<SafePost>('/api/posts', {
           content,
           casNumbers: allCas,
           images: finalImages,
@@ -199,7 +185,7 @@ export function ComposeBox({
           throw new Error(result.error || t.compose.failedToPost)
         }
 
-        const created = result.data
+        const created = result.data!
         showToast(t.compose.posted, 'success', 2000)
         reset()
 
@@ -370,12 +356,12 @@ export function ComposeBox({
                   <button
                     type="button"
                     onClick={() => fileRef.current?.click()}
-                    disabled={totalImages >= MAX_IMAGES || compressing}
+                    disabled={totalImages >= MAX_IMAGES}
                     className="rounded-full p-2 text-brand transition-colors hover:bg-brand-tint disabled:opacity-40"
                     aria-label={t.compose.addImages}
                     title={t.compose.addImagesTitle(MAX_IMAGES)}
                   >
-                    {compressing ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-line-strong border-t-brand" /> : <ImageIcon className="h-5 w-5" />}
+                    <ImageIcon className="h-5 w-5" />
                   </button>
                   {totalImages > 0 && (
                     <span className="text-xs tabular-nums text-ink-muted">

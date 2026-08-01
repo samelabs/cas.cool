@@ -4,11 +4,14 @@ import { useState, useEffect, useTransition } from 'react'
 import { t } from '@/lib/i18n'
 import { Avatar } from '@/components/ui/Avatar'
 import { useToast } from '@/components/ui/Toast'
-import {
-  adminListVerifications,
-  adminApproveVerification,
-  adminRejectVerification,
-} from '@/actions/admin'
+import { get, post } from '@/lib/api-client'
+
+function verificationsUrl(status: string, q: string): string {
+  const p = new URLSearchParams()
+  p.set('status', status)
+  if (q) p.set('q', q)
+  return `/api/admin/verifications?${p.toString()}`
+}
 
 interface SubmissionUser {
   id: string
@@ -52,12 +55,11 @@ export default function AdminVerificationsPage() {
   useEffect(() => {
     startTransition(async () => {
       try {
-        const result = await adminListVerifications({
-          status: filter,
-          q: searchQuery || undefined,
-        })
-        if (!result.ok) throw new Error()
-        setSubmissions(result.data.submissions as Submission[])
+        const result = await get<{ submissions: Submission[] }>(
+          verificationsUrl(filter, searchQuery),
+        )
+        if (!result.ok) throw new Error(result.error ?? undefined)
+        setSubmissions(result.data!.submissions)
       } catch {
         showToast(t.admin.verificationsLoadFailed, 'error')
       } finally {
@@ -74,14 +76,16 @@ export default function AdminVerificationsPage() {
   const approve = async (id: string) => {
     setActing(id)
     try {
-      const result = await adminApproveVerification(id)
-      if (!result.ok) throw new Error()
+      const result = await post(`/api/admin/verifications/${id}/approve`)
+      if (!result.ok) throw new Error(result.error ?? undefined)
       showToast(t.admin.approveToast, 'success')
       startTransition(async () => {
         try {
-          const result = await adminListVerifications({ status: filter, q: searchQuery || undefined })
-          if (!result.ok) throw new Error()
-          setSubmissions(result.data.submissions as Submission[])
+          const result = await get<{ submissions: Submission[] }>(
+            verificationsUrl(filter, searchQuery),
+          )
+          if (!result.ok) throw new Error(result.error ?? undefined)
+          setSubmissions(result.data!.submissions)
         } catch {
           showToast(t.admin.verificationsLoadFailed, 'error')
         }
@@ -96,14 +100,18 @@ export default function AdminVerificationsPage() {
   const reject = async (id: string) => {
     setActing(id)
     try {
-      const result = await adminRejectVerification(id, rejectNote.trim() || undefined)
-      if (!result.ok) throw new Error()
+      const result = await post(`/api/admin/verifications/${id}/reject`, {
+        note: rejectNote.trim() || undefined,
+      })
+      if (!result.ok) throw new Error(result.error ?? undefined)
       showToast(t.admin.rejectToast, 'info')
       startTransition(async () => {
         try {
-          const result = await adminListVerifications({ status: filter, q: searchQuery || undefined })
-          if (!result.ok) throw new Error()
-          setSubmissions(result.data.submissions as Submission[])
+          const result = await get<{ submissions: Submission[] }>(
+            verificationsUrl(filter, searchQuery),
+          )
+          if (!result.ok) throw new Error(result.error ?? undefined)
+          setSubmissions(result.data!.submissions)
         } catch {
           showToast(t.admin.verificationsLoadFailed, 'error')
         }

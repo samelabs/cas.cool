@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { t } from '@/lib/i18n'
 import type { SafeUser } from '@/lib/types'
 
-import { sendMessage } from '@/actions/social'
+import { post } from '@/lib/api-client'
 
 export interface ChatMessage {
   id: string
@@ -75,7 +75,7 @@ export default function MessageThread({
     }
     setMessages((m) => [...m, optimistic])
     try {
-      const result = await sendMessage(conversationId, text)
+      const result = await post('/api/messages/' + conversationId + '/send', { content: text })
       if (!result.ok) throw new Error()
       // sendMessage returns { ok: true } — no message id returned, so the
       // optimistic message stays with its temp id. The real message will appear

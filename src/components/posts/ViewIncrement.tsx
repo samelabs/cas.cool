@@ -1,20 +1,20 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { incrementView } from '@/actions/posts'
+import { post } from '@/lib/api-client'
 
 /**
  * Fire-and-forget view increment on mount.
- * Calls the incrementView Server Action once when the post detail page loads.
+ * Calls POST /api/posts/[code]/view once when the post detail page loads.
  */
-export default function ViewIncrement({ postId }: { postId: string }) {
+export default function ViewIncrement({ code }: { code: string }) {
   const fired = useRef(false)
 
   useEffect(() => {
     if (fired.current) return
     fired.current = true
-    incrementView(postId).catch(() => {})
-  }, [postId])
+    post('/api/posts/' + code + '/view').catch(() => {})
+  }, [code])
 
   return null
 }

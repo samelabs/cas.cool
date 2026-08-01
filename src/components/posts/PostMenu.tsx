@@ -9,7 +9,7 @@ import { cn } from '@/lib/cn'
 import { postUrl } from '@/lib/shortCode'
 import type { SafePost } from '@/lib/types'
 import { t } from '@/lib/i18n'
-import { deletePost as deletePostAction } from '@/actions/posts'
+import { del } from '@/lib/api-client'
 
 /**
  * Post ellipsis menu — shown at the top-right of each PostCard.
@@ -89,8 +89,8 @@ export function PostMenu({
   const deletePost = useCallback(async () => {
     setDeleting(true)
     try {
-      const result = await deletePostAction(post.id)
-      if (!result.ok) throw new Error(result.error)
+      const result = await del('/api/posts/' + post.shortCode)
+      if (!result.ok) throw new Error(result.error ?? undefined)
       showToast(t.postMenu.postDeleted, 'success', 2000)
       onDeleted?.(post.id)
       setOpen(false)
@@ -100,7 +100,7 @@ export function PostMenu({
     } finally {
       setDeleting(false)
     }
-  }, [post.id, onDeleted, showToast])
+  }, [post.shortCode, post.id, onDeleted, showToast])
 
   const requestDelete = useCallback(() => {
     setConfirmingDelete(true)

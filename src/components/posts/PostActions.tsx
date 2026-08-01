@@ -19,11 +19,7 @@ import {
 } from '@/components/icons'
 import type { SafePost } from '@/lib/types'
 import { t } from '@/lib/i18n'
-import {
-  toggleLike as toggleLikeAction,
-  toggleRepost as toggleRepostAction,
-  toggleBookmark as toggleBookmarkAction,
-} from '@/actions/posts'
+import { post as apiPost, del } from '@/lib/api-client'
 
 // Lazy-load ShareButton — 390 lines of share overlay JS only when clicked.
 const ShareButton = dynamic(
@@ -276,8 +272,10 @@ export function PostActions({ post, hideComment = false, hideRepost = false }: P
     if (next) setLikeAnim((n) => n + 1)
     setLikePending(true)
     try {
-      const result = await toggleLikeAction(post.id)
-      if (!result.ok) throw new Error(result.error)
+      const result = next
+        ? await apiPost('/api/posts/' + post.shortCode + '/like')
+        : await del('/api/posts/' + post.shortCode + '/like')
+      if (!result.ok) throw new Error(result.error ?? undefined)
       syncCache({ liked: next }, { likes: next ? 1 : -1 })
     } catch {
       setLiked(!next)
@@ -295,8 +293,10 @@ export function PostActions({ post, hideComment = false, hideRepost = false }: P
     setRepostCount((c) => c + (next ? 1 : -1))
     setRepostPending(true)
     try {
-      const result = await toggleRepostAction(post.id)
-      if (!result.ok) throw new Error(result.error)
+      const result = next
+        ? await apiPost('/api/posts/' + post.shortCode + '/repost')
+        : await del('/api/posts/' + post.shortCode + '/repost')
+      if (!result.ok) throw new Error(result.error ?? undefined)
       syncCache({ reposted: next }, { reposts: next ? 1 : -1 })
     } catch {
       setReposted(!next)
@@ -314,8 +314,10 @@ export function PostActions({ post, hideComment = false, hideRepost = false }: P
     setBookmarkCount((c) => c + (next ? 1 : -1))
     setBookmarkPending(true)
     try {
-      const result = await toggleBookmarkAction(post.id)
-      if (!result.ok) throw new Error(result.error)
+      const result = next
+        ? await apiPost('/api/posts/' + post.shortCode + '/bookmark')
+        : await del('/api/posts/' + post.shortCode + '/bookmark')
+      if (!result.ok) throw new Error(result.error ?? undefined)
       syncCache({ bookmarked: next }, { bookmarks: next ? 1 : -1 })
     } catch {
       setBookmarked(!next)

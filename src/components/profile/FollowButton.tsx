@@ -8,7 +8,7 @@ import { useToast } from '@/components/ui/Toast'
 import { cn } from '@/lib/cn'
 import type { SafeUser } from '@/lib/types'
 import { t } from '@/lib/i18n'
-import { toggleFollow } from '@/actions/social'
+import { post, del } from '@/lib/api-client'
 
 export interface FollowButtonProps {
   /** The user to follow / unfollow. */
@@ -69,14 +69,16 @@ export default function FollowButton({
     setArmed(false)
     setPending(true)
     try {
-      const result = await toggleFollow(targetUser.username)
+      const result = following
+        ? await del<{ following: boolean }>('/api/users/' + targetUser.username + '/follow')
+        : await post<{ following: boolean }>('/api/users/' + targetUser.username + '/follow')
       if (!result.ok) {
         throw new Error(result.error || t.profile.requestFailed)
       }
       // Refresh SSR data so other FollowButton instances (RightPanel suggestions,
       // profile page) reflect the new follow state without a manual page reload.
       router.refresh()
-      showToast(result.data.following ? t.profile.followed : t.profile.unfollowed, 'success', 2000)
+      showToast(result.data!.following ? t.profile.followed : t.profile.unfollowed, 'success', 2000)
     } catch (err) {
       setFollowing(!next)
       showToast(err instanceof Error ? err.message : t.errors.somethingWrong, 'error')

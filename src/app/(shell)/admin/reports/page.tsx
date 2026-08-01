@@ -8,11 +8,11 @@ import { useToast } from '@/components/ui/Toast'
 import { VerifiedBadge } from '@/components/icons'
 import { cn } from '@/lib/cn'
 import { timeAgo } from '@/lib/utils'
-import {
-  adminListReports,
-  adminResolveReport,
-  adminDismissReport,
-} from '@/actions/admin'
+import { get, post } from '@/lib/api-client'
+
+function reportsUrl(status: string): string {
+  return `/api/admin/reports?status=${encodeURIComponent(status)}`
+}
 
 interface AdminReport {
   id: string
@@ -85,10 +85,12 @@ export default function AdminReportsPage() {
   useEffect(() => {
     startTransition(async () => {
       try {
-        const result = await adminListReports(filter)
-        if (!result.ok) throw new Error()
-        setReports(result.data.reports as AdminReport[])
-        setPendingCount(result.data.pendingCount)
+        const result = await get<{ reports: AdminReport[]; pendingCount: number }>(
+          reportsUrl(filter),
+        )
+        if (!result.ok) throw new Error(result.error ?? undefined)
+        setReports(result.data!.reports)
+        setPendingCount(result.data!.pendingCount)
       } catch {
         showToast(t.admin.loadingFailed, 'error')
       } finally {
@@ -100,19 +102,18 @@ export default function AdminReportsPage() {
   const resolve = async (id: string, action: string) => {
     setActing(id)
     try {
-      const result = await adminResolveReport(
-        id,
-        action as 'warn' | 'delete' | 'suspend' | 'none',
-      )
-      if (!result.ok) throw new Error()
+      const result = await post(`/api/admin/reports/${id}/resolve`, { action })
+      if (!result.ok) throw new Error(result.error ?? undefined)
       showToast(t.admin.resolvedToast, 'success')
       // Refetch without loading state (avoid list flicker)
       startTransition(async () => {
         try {
-          const result = await adminListReports(filter)
-          if (!result.ok) throw new Error()
-          setReports(result.data.reports as AdminReport[])
-          setPendingCount(result.data.pendingCount)
+          const result = await get<{ reports: AdminReport[]; pendingCount: number }>(
+            reportsUrl(filter),
+          )
+          if (!result.ok) throw new Error(result.error ?? undefined)
+          setReports(result.data!.reports)
+          setPendingCount(result.data!.pendingCount)
         } catch {
           showToast(t.admin.loadingFailed, 'error')
         }
@@ -127,15 +128,17 @@ export default function AdminReportsPage() {
   const dismiss = async (id: string) => {
     setActing(id)
     try {
-      const result = await adminDismissReport(id)
-      if (!result.ok) throw new Error()
+      const result = await post(`/api/admin/reports/${id}/dismiss`)
+      if (!result.ok) throw new Error(result.error ?? undefined)
       showToast(t.admin.dismissedToast, 'success')
       startTransition(async () => {
         try {
-          const result = await adminListReports(filter)
-          if (!result.ok) throw new Error()
-          setReports(result.data.reports as AdminReport[])
-          setPendingCount(result.data.pendingCount)
+          const result = await get<{ reports: AdminReport[]; pendingCount: number }>(
+            reportsUrl(filter),
+          )
+          if (!result.ok) throw new Error(result.error ?? undefined)
+          setReports(result.data!.reports)
+          setPendingCount(result.data!.pendingCount)
         } catch {
           showToast(t.admin.loadingFailed, 'error')
         }

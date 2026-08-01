@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { t } from '@/lib/i18n'
-import { submitReport } from '@/actions/social'
+import { post } from '@/lib/api-client'
 
 /**
  * Shared report dialog — used for both POST and USER reports.
@@ -98,7 +98,7 @@ export function ReportDialog({
     if (!reason || submitting) return
     setSubmitting(true)
     try {
-      const result = await submitReport({
+      const result = await post('/api/reports', {
         targetType: target.type,
         targetId: target.targetId,
         reason,

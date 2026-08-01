@@ -124,7 +124,7 @@ export default async function ShortPostPage({
         authorFollowed={authorFollowed}
         currentUser={me}
       />
-      <ViewIncrement postId={post.id} />
+      <ViewIncrement code={code} />
     </>
   )
 }

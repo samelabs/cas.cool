@@ -10,8 +10,7 @@ import { Avatar } from '@/components/ui/Avatar'
 import { useToast } from '@/components/ui/Toast'
 import { VerifiedBadge } from '@/components/icons'
 import { canUploadMedia } from '@/lib/permissions'
-import { uploadImage as uploadImageAction, updateProfile } from '@/actions/profile'
-import { compressImage } from '@/lib/client-image'
+import { postForm, patch } from '@/lib/api-client'
 import type { SafeUser } from '@/lib/types'
 
 export function ProfileForm({ currentUser }: { currentUser: SafeUser }) {
@@ -41,7 +40,7 @@ export function ProfileForm({ currentUser }: { currentUser: SafeUser }) {
     e.preventDefault()
     setSavingProfile(true)
     try {
-      const result = await updateProfile({
+      const result = await patch('/api/me/profile', {
         displayName: displayName.trim() || null,
         bio: bio.trim() || null,
         avatar: avatar.trim() || null,
@@ -61,21 +60,19 @@ export function ProfileForm({ currentUser }: { currentUser: SafeUser }) {
 
   const uploadFile = async (file: File, purpose: 'avatar' | 'banner'): Promise<string | null> => {
     try {
-      const compressed = await compressImage(file)
-      if (!compressed) return null
-      const blob = compressed.blob
-      const ext = blob.type === 'image/gif' ? 'gif' : blob.type === 'image/png' ? 'png' : 'webp'
-      const compressedFile = new File([blob], `upload.${ext}`, { type: blob.type })
-      const result = await uploadImageAction(compressedFile, purpose)
-      if (!result.ok) return null
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('purpose', purpose)
+      const result = await postForm<{ url: string; filename: string; bytes: number }>('/api/upload', formData)
+      if (!result.ok || !result.data) return null
       return result.data.url
     } catch {
       return null
     }
   }
 
-  const patchUser = async (patch: Record<string, string | null>) => {
-    const result = await updateProfile(patch)
+  const patchUser = async (patchData: Record<string, string | null>) => {
+    const result = await patch('/api/me/profile', patchData)
     if (!result.ok) throw new Error(result.error || t.errors.somethingWrong)
   }
 
