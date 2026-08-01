@@ -84,16 +84,17 @@ export async function POST(request: NextRequest) {
   const content = typeof body.content === 'string' ? body.content.trim() : ''
   const parentId = typeof body.parentId === 'string' && body.parentId ? body.parentId : null
   const quotePostId = typeof body.quotePostId === 'string' && body.quotePostId ? body.quotePostId : null
+  const imageUrls = Array.isArray(body.images)
+    ? body.images.filter((u: unknown) => typeof u === 'string' && u.startsWith('/uploads/')).slice(0, MAX_IMAGES)
+    : []
 
-  if (!content && !quotePostId) return jsonError(400, 'bad_request', 'Content is required.')
+  if (!content && imageUrls.length === 0 && !quotePostId) {
+    return jsonError(400, 'bad_request', 'Content is required.')
+  }
   if (!content && quotePostId) return jsonError(400, 'bad_request', 'Quote posts require text.')
 
   const limit = maxPostLength(user)
   if (content.length > limit) return jsonError(400, 'bad_request', `Content too long (max ${limit} characters).`)
-
-  const imageUrls = Array.isArray(body.images)
-    ? body.images.filter((u: unknown) => typeof u === 'string' && u.startsWith('/uploads/')).slice(0, MAX_IMAGES)
-    : []
 
   // Parent + conversation resolution
   let conversationId: string | null = null

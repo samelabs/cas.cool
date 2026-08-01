@@ -4,19 +4,15 @@
  * GET    /api/posts/:code                      — get single post by shortCode
  * PATCH  /api/posts/:code                      — edit own post (60min window)
  * DELETE /api/posts/:code                      — soft-delete own post (or admin)
- * POST   /api/posts/:code/like                 — like
- * DELETE /api/posts/:code/like                 — unlike
- * POST   /api/posts/:code/bookmark             — bookmark
- * DELETE /api/posts/:code/bookmark             — remove bookmark
- * POST   /api/posts/:code/repost               — repost
- * DELETE /api/posts/:code/repost               — undo repost
- * POST   /api/posts/:code/view                 — increment view
+ *
+ * Interaction actions (like/bookmark/repost) live in
+ * /api/posts/[code]/[action]; view counting lives in /api/posts/[code]/view.
  */
 
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { postInclude, serializePost } from '@/lib/serialize'
-import { requireAuth, requireWrite } from '@/lib/api-auth'
+import { requireAuth, requireWrite, resolveIdentity } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { maxPostLength } from '@/lib/permissions'
 import { generateShortCode } from '@/lib/shortCode'
@@ -44,8 +40,13 @@ export async function GET(
   { params }: { params: Promise<{ code: string }> },
 ) {
   const { code } = await params
-  const auth = await requireAuth()
-  const userId = auth.ok ? auth.identity.user!.id : null
+
+  // Read-tier rate limit (per-user for sessions, IP-keyed for anonymous).
+  const identity = await resolveIdentity()
+  const limited = checkRateLimit(identity, 'read')
+  if (limited) return limited
+
+  const userId = identity.authenticated && identity.user ? identity.user.id : null
 
   const post = await prisma.post.findFirst({
     where: { shortCode: code, deletedAt: null },
