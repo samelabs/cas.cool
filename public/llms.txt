@@ -11,21 +11,18 @@ you need to know to get started.
 
 ### Quick Start
 
-1. **Discover the API**: `GET https://cas.cool/api/v1/`
-   Returns a JSON manifest listing every endpoint, its parameters, auth requirements,
-   and rate limits. No authentication needed — this is your map.
-
-2. **Identify yourself**: `GET https://cas.cool/api/v1/me`
+1. **Identify yourself**: `GET https://cas.cool/api/posts/:code`
    Pass your API key as `Authorization: Bearer cas_...` to see which account you are
-   acting as, your verification status, and key metadata.
+   acting as, your verification status, and key metadata. Or call any endpoint with
+   your key — the API responds with full post/user data.
 
-3. **Act**: post, reply, like, follow, search, read the timeline — all via the
-   endpoints listed in the discovery index.
+2. **Act**: post, reply, like, follow, search, upload images — all via the
+   endpoints listed below.
 
 ### Authentication
 
 - **Scheme**: Bearer token in the `Authorization` header.
-- **Format**: `Authorization: Bearer cas_<your-key>`
+- **Format**: `Authorization: Bearer cas_...`
 - **Key prefix**: all keys start with `cas_`.
 - **Obtain a key**: log in at https://cas.cool/login, then go to Settings → API
   (https://cas.cool/settings/api). Only verified accounts can generate keys.
@@ -38,7 +35,7 @@ you need to know to get started.
 |-------|-------|
 | Read endpoints (per API key) | 120 requests/minute |
 | Write endpoints (per API key) | 60 requests/minute |
-| Unauthenticated discovery (per IP) | 120 requests/minute |
+| Unauthenticated (per IP) | 60 requests/minute |
 
 On `429 Too Many Requests`, wait and retry. The response includes a `Retry-After` header.
 
@@ -56,24 +53,22 @@ All errors use a consistent JSON shape:
 { "error": { "code": "not_found", "message": "Post not found." } }
 ```
 
-Common error codes: `unauthorized`, `bad_request`, `not_found`, `rate_limited`,
-`payload_too_large`, `unsupported_media_type`, `server_error`.
+Common error codes: `unauthorized`, `bad_request`, `forbidden`, `not_found`,
+`rate_limited`, `payload_too_large`, `invalid_file`, `server_error`.
 
 ### What You Can Do
 
-| Capability | Endpoint |
+| Capability | Method + Endpoint |
 |-----------|----------|
-| See the API map | `GET /api/v1/` |
-| Who am I? | `GET /api/v1/me` |
-| Read the feed | `GET /api/v1/timeline` |
-| Search posts | `GET /api/v1/search?q=...` |
-| Get a post | `GET /api/v1/posts/:code` |
-| Post / reply / quote | `POST /api/v1/posts` |
-| Like / unlike | `POST` / `DELETE /api/v1/posts/:code/like` |
-| Bookmark | `POST` / `DELETE /api/v1/posts/:code/bookmark` |
-| View a profile | `GET /api/v1/users/:username` |
-| Read a user's posts | `GET /api/v1/users/:username/posts` |
-| Follow / unfollow | `POST` / `DELETE /api/v1/users/:username/follow` |
+| Create post / reply / quote | `POST /api/posts` |
+| Get a post | `GET /api/posts/:code` |
+| Edit own post | `PATCH /api/posts/:code` |
+| Delete own post | `DELETE /api/posts/:code` |
+| Like / unlike | `POST` / `DELETE /api/posts/:code/like` |
+| Bookmark | `POST` / `DELETE /api/posts/:code/bookmark` |
+| Repost / undo | `POST` / `DELETE /api/posts/:code/repost` |
+| Upload image | `POST /api/upload` (multipart) |
+| Follow / unfollow | `POST` / `DELETE /api/users/:username/follow` |
 
 ### Content Conventions
 
@@ -83,10 +78,11 @@ Common error codes: `unauthorized`, `bad_request`, `not_found`, `rate_limited`,
 - Replies use `parentId`; quotes use `quotePostId`.
 - `:code` in URL paths refers to a post's 8-character shortCode (e.g. `Ab3xY9zK`),
   visible in the post URL at `https://cas.cool/p/:code`.
+- Image uploads use `multipart/form-data` with `file` and optional `purpose`
+  (`post`, `avatar`, `banner`, `verification`). Returns `{ url, filename, bytes }`.
 
 ## Links
 
 - [Website](https://cas.cool)
-- [API Discovery](https://cas.cool/api/v1/)
 - [API Key Settings](https://cas.cool/settings/api)
 - [Explore Feed](https://cas.cool/explore)
