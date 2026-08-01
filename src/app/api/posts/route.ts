@@ -1,18 +1,28 @@
 /**
- * POST /api/posts          — create post / reply / quote
+ * /api/posts
  *
- * Auth: API Key or Session.
- * Body (JSON): { content, parentId?, quotePostId?, casNumbers?, images? }
+ * GET   — read timeline / feed (list posts)
+ * POST  — create post / reply / quote
+ *
+ * GET Auth: optional (API Key, Session, or anonymous).
+ *   Query params mirror `getTimelinePage`:
+ *   tab (latest|following|foryou), cursor, take, cas, author, scope
+ *   (replies|media), likedBy, bookmarkedBy, repliesOf, conversationOf,
+ *   since. Returns { posts, nextCursor }.
+ *
+ * POST Auth: API Key or Session.
+ *   Body (JSON): { content, parentId?, quotePostId?, casNumbers?, images? }
  */
 
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { postInclude, serializePost } from '@/lib/serialize'
-import { requireWrite } from '@/lib/api-auth'
+import { requireWrite, resolveIdentity } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { maxPostLength } from '@/lib/permissions'
 import { generateShortCode } from '@/lib/shortCode'
 import { upsertNotification } from '@/lib/notification'
+import { getTimelinePage } from '@/lib/services/post.service'
 import { extractCASNumber, extractMentions } from '@/lib/utils'
 
 const MAX_IMAGES = 4
@@ -20,6 +30,44 @@ const CAS_FORMAT = /^\d{2,7}-\d{2}-\d$/
 
 function jsonError(status: number, code: string, message: string) {
   return Response.json({ error: { code, message } }, { status })
+}
+
+// ── GET /api/posts — read timeline / feed ────────────────────
+
+export async function GET(request: NextRequest) {
+  const identity = await resolveIdentity()
+  const limited = checkRateLimit(identity, 'read')
+  if (limited) return limited
+
+  const sp = request.nextUrl.searchParams
+
+  const tabRaw = sp.get('tab')
+  const tab =
+    tabRaw === 'following' || tabRaw === 'foryou' ? tabRaw : 'latest'
+
+  const cursor = sp.get('cursor') ?? undefined
+  const takeRaw = Number(sp.get('take'))
+  const take = Number.isFinite(takeRaw) && takeRaw > 0 ? takeRaw : undefined
+
+  const scopeRaw = sp.get('scope')
+  const scope = scopeRaw === 'replies' || scopeRaw === 'media' ? scopeRaw : undefined
+
+  const page = await getTimelinePage({
+    tab,
+    cursor,
+    take,
+    userId: identity.user?.id ?? null,
+    cas: sp.get('cas') ?? undefined,
+    author: sp.get('author') ?? undefined,
+    scope,
+    likedBy: sp.get('likedBy') ?? undefined,
+    bookmarkedBy: sp.get('bookmarkedBy') ?? undefined,
+    repliesOf: sp.get('repliesOf') ?? undefined,
+    conversationOf: sp.get('conversationOf') ?? undefined,
+    since: sp.get('since') ?? undefined,
+  })
+
+  return Response.json({ posts: page.posts, nextCursor: page.nextCursor })
 }
 
 export async function POST(request: NextRequest) {
