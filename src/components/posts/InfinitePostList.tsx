@@ -69,7 +69,7 @@ function InfinitePostListInner({
   const { data, error, size, setSize, isValidating, mutate } = useSWRInfinite<Page>(
     getKey,
     fetcher,
-    { revalidateFirstPage: false, revalidateOnFocus: false },
+    { revalidateFirstPage: true, revalidateOnFocus: true },
   )
 
   // Expose cache mutation to parent for optimistic updates (e.g. new reply).
