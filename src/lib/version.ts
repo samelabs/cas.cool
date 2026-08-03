@@ -15,7 +15,7 @@
  * Keep a separate CHANGELOG.md file in the repo root for detailed history.
  */
 
-export const VERSION = '1.1.4'
+export const VERSION = '1.1.5'
 
 /** GitHub repository (canonical open-source release). */
 export const GITHUB_URL = 'https://github.com/samelabs/cas.cool'

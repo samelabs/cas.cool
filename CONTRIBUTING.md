@@ -24,7 +24,7 @@ npx prisma generate
 
 # Environment
 cp .env.example .env
-# Fill in DATABASE_URL, NEXTAUTH_SECRET, etc.
+# Fill in DATABASE_URL and JWT_SECRET
 
 # Run
 npm run dev
@@ -55,7 +55,6 @@ src/
     image.ts          Server-side image processing (sharp)
     serialize.ts      Post serialization (postInclude)
     proxy.ts          Middleware (auth check, rate limit)
-  actions/          Server Actions (read-only prefetch only)
 prisma/
   schema.prisma     Database schema (source of truth)
   migrations/       Prisma migrations
@@ -78,8 +77,7 @@ prisma/
 - **Design tokens from `globals.css` `@theme`** — no hardcoded colors.
 - **Icons**: `@/components/icons` is canonical.
 - **FollowButton**: `@/components/profile/FollowButton` is canonical.
-- **No raw `<img>`** for new code — use `next/image`.
-- **Images**: all uploads go through `src/lib/image.ts` → `processAndStoreImage()`.
+- **No raw `<img>` for user content** — all uploads go through `src/lib/image.ts` → `processAndStoreImage()`.
 
 ### API
 
@@ -102,7 +100,7 @@ npm run lint
 npm run build
 
 # API tests (if present)
-npm run test:api
+# npm run test:api  (removed — no separate API process)
 ```
 
 ## Pull Request Process

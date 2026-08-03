@@ -1,15 +1,11 @@
 {
   "name": "cascool-app",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "dev:api": "npm run build:api && node --watch services/public-api/dist/server.js",
     "build": "next build",
-    "build:api": "tsc -p services/public-api/tsconfig.json",
-    "test:api": "npm run build:api && node --test services/public-api/test/*.test.mjs",
     "start": "next start",
-    "start:api": "node services/public-api/dist/server.js",
     "lint": "eslint"
   },
   "dependencies": {

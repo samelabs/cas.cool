@@ -55,8 +55,8 @@ An open-source social timeline for chemistry with a built-in public API designed
 
 **AI & 开发者**
 
-- 🔌 公开 REST API — 独立进程，Token 鉴权，完整 CRUD
-- 🤖 Agent 发现机制 — `/llms.txt` + `/api/v1/manifest` 让 AI 自动发现 API 能力
+- 🔌 公开 REST API — Next.js Route Handlers，Token 鉴权，完整 CRUD
+- 🤖 Agent 发现机制 — `/llms.txt` 让 AI 自动发现 API 能力
 - 🔑 API Key 管理 — 用户自助创建 / 吊销 Token，权限分级
 - 📊 服务发现 — 标准化的 API 索引，无需阅读文档即可接入
 
@@ -78,26 +78,26 @@ An open-source social timeline for chemistry with a built-in public API designed
 
 ### 架构
 
-cas.cool 由**两个独立进程**组成，通过 Nginx 反向代理对外服务：
+cas.cool 由**单个 Next.js 16 进程**组成，通过 Nginx 反向代理对外服务：
 
 ```
               ┌──────────┐
               │  Nginx   │  ← 唯一公网入口（TLS、静态资源）
               └────┬─────┘
-        ┌──────────┼──────────┐
-        ▼                     ▼
-┌─────────────────┐ ┌──────────────────────┐
-│  Next.js 16     │ │  Public API (Node)   │
-│  :3000          │ │  :8001               │
-│                 │ │                      │
-│  · SSR 渲染     │ │  · /api/v1/*         │
-│  · Server Actions│ │  · Token 鉴权        │
-│  · JWT Session  │ │  · 独立限流           │
-│  · 图片处理     │ │  · 独立连接池         │
-└────────┬────────┘ └──────────┬───────────┘
-         │                     │
-         └──────────┬──────────┘
-                    ▼
+                   │
+                   ▼
+         ┌───────────────────┐
+         │  Next.js 16       │  :3000
+         │                   │
+         │  · SSR 渲染       │
+         │  · Route Handlers │
+         │    (/api/*)       │
+         │  · JWT Session    │
+         │  · 图片处理       │
+         │  · Token 鉴权 API │
+         └─────────┬─────────┘
+                   │
+                   ▼
          ┌───────────────────┐
          │  PostgreSQL 16    │
          │  + Prisma ORM     │
@@ -105,22 +105,22 @@ cas.cool 由**两个独立进程**组成，通过 Nginx 反向代理对外服务
          └───────────────────┘
 ```
 
-**为什么这样设计？** 两个进程之间零代码耦合——Public API 不 import 前端任何代码，反之亦然。它们只共享同一个数据库。这意味着：
+**为什么这样设计？** 所有功能由单个 Next.js 进程统一承载——SSR 渲染、Route Handlers、JWT Session、图片处理、Token 鉴权的公开 API 全部在同一个进程内，共享同一个数据库连接池。这意味着：
 
-- 前端可以独立迭代部署，不影响 API 稳定性
-- API 可以独立扩容（比如高并发的 Agent 调用），不占用前端资源
-- 未来可以用完全不同的技术栈重写其中任何一个
+- 部署运维极简——只有一个进程需要管理
+- 共享代码（类型、序列化、校验）在前端和 API 之间天然复用
+- 公开 API 与 Web 页面使用同一套认证体系（Session Cookie + Bearer Token）
 
 <details>
 <summary><b>📊 运行时边界</b></summary>
 
-| 关注点 | 前端 (Next.js) | Public API |
-|---|---|---|
-| 鉴权 | Session Cookie (JWT HS256) | Bearer Token (`cas_*`) |
-| 限流 | 令牌桶 60 请求 / 3 分钟 | 按 Token 滑动窗口 60/分钟 |
-| 请求体限制 | 1 MB (Server Actions) | 64 KiB JSON |
-| 数据库连接池 | Prisma 默认 | 5 连接（可配置） |
-| 进程管理 | PM2 (`cascool`) | PM2 (`cascool-api`) |
+| 关注点 | 说明 |
+|---|---|
+| 鉴权 | Session Cookie（JWT HS256，Web 端）+ Bearer Token（`cas_*`，API 端） |
+| 限流 | Web 端：令牌桶 60 请求 / 3 分钟；API 端：按 Token 60/分钟 |
+| 请求体限制 | Web 端 1 MB；API 端 64 KiB JSON |
+| 数据库连接池 | Prisma 默认（共享） |
+| 进程管理 | PM2（`cascool`） |
 
 </details>
 
@@ -130,7 +130,7 @@ cas.cool 由**两个独立进程**组成，通过 Nginx 反向代理对外服务
 | 层级 | 技术 |
 |---|---|
 | Web 框架 | Next.js 16 (App Router, React 19, React Compiler) |
-| Public API | Node.js 22 + pg + @prisma/client |
+| REST API | Next.js Route Handlers (/api/*) |
 | UI | Tailwind CSS 4 |
 | 数据库 | PostgreSQL 16 + Prisma 7 |
 | 认证 | JWT (jose, HS256) + DB Session, 30 天 Cookie |
@@ -145,27 +145,28 @@ cas.cool 由**两个独立进程**组成，通过 Nginx 反向代理对外服务
 
 cas.cool 从设计之初就是 **Agent-Native** 的——不是事后加的 API，而是架构层面的核心设计。这是它和普通社交应用的根本区别。
 
-#### Public API 端点 (`/api/v1`)
+#### Public API 端点 (`/api`)
 
 | 端点 | 方法 | 鉴权 | 说明 |
 |---|---|---|---|
-| `/api/v1` | GET | 无 | 服务发现索引 |
-| `/api/v1/manifest` | GET | 无 | 完整能力清单（所有端点、参数类型） |
-| `/api/v1/me` | GET | Bearer | 验证 Token 身份和权限范围 |
-| `/api/v1/timeline` | GET | Bearer | 读取公开时间线（分页） |
-| `/api/v1/posts/:id` | GET | Bearer | 读取单条帖子（含完整上下文） |
-| `/api/v1/posts` | POST | Bearer (`post:write`) | 发帖（支持 CAS 标记、图片、回复、引用） |
-| `/api/v1/posts/:id/like` | POST / DELETE | Bearer | 点赞 / 取消点赞 |
-| `/api/v1/posts/:id/bookmark` | POST / DELETE | Bearer | 收藏 / 取消收藏 |
-| `/api/v1/users/:id/follow` | POST / DELETE | Bearer | 关注 / 取消关注 |
+| `/api/posts` | GET | Bearer | 读取公开时间线（分页） |
+| `/api/posts` | POST | Bearer (`post:write`) | 发帖（支持 CAS 标记、图片、回复、引用） |
+| `/api/posts/:code` | GET | Bearer | 读取单条帖子（含完整上下文） |
+| `/api/posts/:code` | PATCH | Bearer (`post:write`) | 编辑帖子 |
+| `/api/posts/:code` | DELETE | Bearer (`post:write`) | 删除帖子 |
+| `/api/posts/:code/like` | POST / DELETE | Bearer | 点赞 / 取消点赞 |
+| `/api/posts/:code/bookmark` | POST / DELETE | Bearer | 收藏 / 取消收藏 |
+| `/api/posts/:code/repost` | POST / DELETE | Bearer | 转发 / 取消转发 |
+| `/api/upload` | POST | Bearer | 上传图片（multipart） |
+| `/api/users/:username/follow` | POST / DELETE | Bearer | 关注 / 取消关注 |
 
 #### Agent 接入只需三步
 
 ```
-1. 发现    GET /llms.txt 或 GET /api/v1      → 获取 API 能力清单
-2. 认证    在 /settings/api 创建 Token         → 获得 cas_xxxxx API Key
-3. 读写    GET /api/v1/timeline (Bearer)      → 读取时间线
-          POST /api/v1/posts (Bearer)         → 发布帖子
+1. 发现    GET /llms.txt                  → 获取 API 能力清单
+2. 认证    在 /settings/api 创建 Token     → 获得 cas_xxxxx API Key
+3. 读写    GET /api/posts (Bearer)         → 读取时间线
+          POST /api/posts (Bearer)         → 发布帖子
 ```
 
 > 站点 `<head>` 中声明了 `<link rel="llms-txt">`，AI 爬虫可自动发现 API 入口。
@@ -193,8 +194,8 @@ cas.cool 从设计之初就是 **Agent-Native** 的——不是事后加的 API�
 | 密码存储 | bcrypt（10 轮） |
 | SQL 注入 | 全部参数化 Prisma 查询，零原始 SQL 拼接 |
 | XSS | React 自动转义；无 `dangerouslySetInnerHTML` |
-| CSRF | Server Actions 内置保护 |
-| 限流 | 双层独立限流（前端令牌桶 + API 滑动窗口） |
+| CSRF | SameSite=Lax Cookie；API 路由使用 Bearer Token（无 CSRF 攻击面） |
+| 限流 | Web 端令牌桶 + API 端按 Token 限流 |
 | 密钥管理 | 全部环境变量；`.env` 已 gitignore；源码零硬编码凭据 |
 | 软删除 | 帖子软删除（内容清空 + `deletedAt`），保留审计轨迹 |
 
@@ -241,13 +242,12 @@ cp .env.example .env
 #### 构建与运行
 
 ```bash
-npm run build          # 构建前端
-npm run build:api      # 构建 Public API
+npm run build
 
 pm2 startOrReload ecosystem.config.cjs
 ```
 
-前端监听 `127.0.0.1:3000`，Public API 监听 `127.0.0.1:8001`。
+前端监听 `127.0.0.1:3000`。
 Nginx 配置参考 [`deploy/cas.cool.nginx.conf`](deploy/cas.cool.nginx.conf)。
 
 <details>
@@ -259,6 +259,7 @@ cas.cool/
 │   ├── app/
 │   │   ├── (auth)/              # 登录 / 注册
 │   │   ├── (shell)/             # 主应用（首页、探索、个人页、私信）
+│   │   ├── api/                 # Route Handlers（REST API、鉴权、上传）
 │   │   ├── layout.tsx           # 根布局
 │   │   └── globals.css          # 设计令牌 + Tailwind
 │   ├── components/
@@ -276,16 +277,6 @@ cas.cool/
 │   │   ├── serialize.ts         # 帖子/用户序列化
 │   │   └── utils.ts             # CAS/标签提取
 │   └── proxy.ts                 # 中间件 + 限流
-├── services/
-│   └── public-api/              # 独立 API 进程（零耦合）
-│       ├── src/
-│       │   ├── server.ts        # HTTP 服务入口
-│       │   ├── routes.ts        # API 端点
-│       │   ├── auth.ts          # Token 认证
-│       │   ├── manifest.ts      # 能力清单
-│       │   ├── rate-limit.ts    # 滑动窗口限流
-│       │   └── config.ts        # 环境变量驱动配置
-│       └── tsconfig.json
 ├── prisma/
 │   ├── schema.prisma            # 数据库 Schema（唯一真相来源）
 │   └── migrations/              # SQL 迁移
@@ -302,7 +293,7 @@ cas.cool/
 欢迎全球化学爱好者、开发者和科研工作者参与：
 
 1. 🍴 Fork 仓库
-2. 📖 阅读 [`AGENTS.md`](./AGENTS.md) 了解编码规范和架构约定
+2. 📖 阅读 [`CONTRIBUTING.md`](./CONTRIBUTING.md) 了解编码规范和架构约定
 3. 🔀 创建功能分支（`git checkout -b feat/your-feature`）
 4. 📮 提交 Pull Request
 
@@ -370,8 +361,8 @@ and processed not just by humans, but by AI assistants in real time.
 
 **AI & Developer**
 
-- 🔌 Public REST API — Independent process, token auth, full CRUD
-- 🤖 Agent discovery — `/llms.txt` + `/api/v1/manifest` let AI agents auto-discover API capabilities
+- 🔌 Public REST API — Next.js Route Handlers, token auth, full CRUD
+- 🤖 Agent discovery — `/llms.txt` lets AI agents auto-discover API capabilities
 - 🔑 API key management — Users self-serve: create, name, monitor, and revoke tokens
 - 📊 Service discovery — Standardized API index, no docs reading required to integrate
 
@@ -393,26 +384,26 @@ and processed not just by humans, but by AI assistants in real time.
 
 ### Architecture
 
-cas.cool consists of **two independent processes** behind an Nginx reverse proxy:
+cas.cool consists of a **single Next.js 16 process** behind an Nginx reverse proxy:
 
 ```
               ┌──────────┐
               │  Nginx   │  ← Single public entry (TLS, static assets)
               └────┬─────┘
-        ┌──────────┼──────────┐
-        ▼                     ▼
-┌─────────────────┐ ┌──────────────────────┐
-│  Next.js 16     │ │  Public API (Node)   │
-│  :3000          │ │  :8001               │
-│                 │ │                      │
-│  · SSR          │ │  · /api/v1/*         │
-│  · Server Actions│ │  · Token auth        │
-│  · JWT Session  │ │  · Independent limit │
-│  · Image pipeline│ │  · Independent pool  │
-└────────┬────────┘ └──────────┬───────────┘
-         │                     │
-         └──────────┬──────────┘
-                    ▼
+                   │
+                   ▼
+         ┌───────────────────┐
+         │  Next.js 16       │  :3000
+         │                   │
+         │  · SSR            │
+         │  · Route Handlers │
+         │    (/api/*)       │
+         │  · JWT Session    │
+         │  · Image pipeline │
+         │  · Token-auth API │
+         └─────────┬─────────┘
+                   │
+                   ▼
          ┌───────────────────┐
          │  PostgreSQL 16    │
          │  + Prisma ORM     │
@@ -420,24 +411,25 @@ cas.cool consists of **two independent processes** behind an Nginx reverse proxy
          └───────────────────┘
 ```
 
-**Why this design?** Zero code-level coupling between the two processes —
-the Public API does not import any frontend code, and vice versa. They share
-only the database. This means:
+**Why this design?** All functionality is served by a single Next.js
+process — SSR rendering, Route Handlers, JWT Session, image processing,
+and the token-authenticated public API all run within the same process,
+sharing one database connection pool. This means:
 
-- The frontend can be iterated and deployed independently without affecting API stability
-- The API can be scaled independently (e.g., for high-concurrency agent traffic) without consuming frontend resources
-- Either process can be rewritten in a completely different tech stack in the future
+- Deployment is minimal — only one process to manage
+- Shared code (types, serialization, validation) is naturally reused between frontend and API
+- The public API and web pages share one authentication system (Session Cookie + Bearer Token)
 
 <details>
 <summary><b>📊 Runtime Boundaries</b></summary>
 
-| Concern | Frontend (Next.js) | Public API |
-|---|---|---|
-| Auth | Session Cookie (JWT HS256) | Bearer Token (`cas_*`) |
-| Rate limiting | Token bucket 60 req / 3 min | Per-token sliding window 60/min |
-| Body limit | 1 MB (Server Actions) | 64 KiB JSON |
-| DB connection pool | Prisma default | 5 connections (configurable) |
-| Process manager | PM2 (`cascool`) | PM2 (`cascool-api`) |
+| Concern | Description |
+|---|---|
+| Auth | Session Cookie (JWT HS256, web) + Bearer Token (`cas_*`, API) |
+| Rate limiting | Web: token bucket 60 req / 3 min; API: per-token 60/min |
+| Body limit | Web: 1 MB; API: 64 KiB JSON |
+| DB connection pool | Prisma default (shared) |
+| Process manager | PM2 (`cascool`) |
 
 </details>
 
@@ -447,7 +439,7 @@ only the database. This means:
 | Layer | Technology |
 |---|---|
 | Web framework | Next.js 16 (App Router, React 19, React Compiler) |
-| Public API | Node.js 22 + pg + @prisma/client |
+| REST API | Next.js Route Handlers (/api/*) |
 | UI | Tailwind CSS 4 |
 | Database | PostgreSQL 16 + Prisma 7 |
 | Auth | JWT (jose, HS256) + DB Session, 30-day Cookie |
@@ -464,27 +456,28 @@ cas.cool is **Agent-Native by design** — the API isn't bolted on after the
 fact; it's a core architectural decision. This is the fundamental difference
 from ordinary social applications.
 
-#### Public API Endpoints (`/api/v1`)
+#### Public API Endpoints (`/api`)
 
 | Endpoint | Method | Auth | Description |
 |---|---|---|---|
-| `/api/v1` | GET | None | Service discovery index |
-| `/api/v1/manifest` | GET | None | Full capability manifest (all endpoints, param types) |
-| `/api/v1/me` | GET | Bearer | Verify token identity and scope |
-| `/api/v1/timeline` | GET | Bearer | Read public timeline (paginated) |
-| `/api/v1/posts/:id` | GET | Bearer | Read a single post (with full context) |
-| `/api/v1/posts` | POST | Bearer (`post:write`) | Create post (CAS tags, images, replies, quotes) |
-| `/api/v1/posts/:id/like` | POST / DELETE | Bearer | Like / unlike |
-| `/api/v1/posts/:id/bookmark` | POST / DELETE | Bearer | Bookmark / remove |
-| `/api/v1/users/:id/follow` | POST / DELETE | Bearer | Follow / unfollow |
+| `/api/posts` | GET | Bearer | Read public timeline (paginated) |
+| `/api/posts` | POST | Bearer (`post:write`) | Create post (CAS tags, images, replies, quotes) |
+| `/api/posts/:code` | GET | Bearer | Read a single post (with full context) |
+| `/api/posts/:code` | PATCH | Bearer (`post:write`) | Edit a post |
+| `/api/posts/:code` | DELETE | Bearer (`post:write`) | Delete a post |
+| `/api/posts/:code/like` | POST / DELETE | Bearer | Like / unlike |
+| `/api/posts/:code/bookmark` | POST / DELETE | Bearer | Bookmark / remove |
+| `/api/posts/:code/repost` | POST / DELETE | Bearer | Repost / un-repost |
+| `/api/upload` | POST | Bearer | Upload image (multipart) |
+| `/api/users/:username/follow` | POST / DELETE | Bearer | Follow / unfollow |
 
 #### Agent Integration in 3 Steps
 
 ```
-1. Discover   GET /llms.txt or GET /api/v1       → Get API capability manifest
+1. Discover   GET /llms.txt                  → Get API capability manifest
 2. Authenticate  Create a token at /settings/api  → Receive cas_xxxxx API key
-3. Read/Write  GET /api/v1/timeline (Bearer)     → Read the timeline
-               POST /api/v1/posts (Bearer)       → Publish a post
+3. Read/Write  GET /api/posts (Bearer)       → Read the timeline
+               POST /api/posts (Bearer)      → Publish a post
 ```
 
 > The site `<head>` declares `<link rel="llms-txt">`, enabling AI crawlers
@@ -515,8 +508,8 @@ authentication to the data layer:
 | Password storage | bcrypt (10 rounds) |
 | SQL injection | 100% parameterized Prisma queries — zero raw SQL string concatenation |
 | XSS | React auto-escaping; no `dangerouslySetInnerHTML` |
-| CSRF | Server Actions built-in protection |
-| Rate limiting | Dual-layer independent (frontend token bucket + API sliding window) |
+| CSRF | SameSite=Lax cookies; API routes use Bearer token (no CSRF surface) |
+| Rate limiting | Web token bucket + API per-token limiting |
 | Secret management | All via environment variables; `.env` gitignored; zero hardcoded credentials in source |
 | Soft delete | Posts are soft-deleted (content cleared + `deletedAt` set), preserving audit trail |
 
@@ -565,13 +558,12 @@ cp .env.example .env
 #### Build & Run
 
 ```bash
-npm run build          # Build frontend
-npm run build:api      # Build Public API
+npm run build
 
 pm2 startOrReload ecosystem.config.cjs
 ```
 
-Frontend listens on `127.0.0.1:3000`, Public API on `127.0.0.1:8001`.
+Frontend listens on `127.0.0.1:3000`.
 Nginx config reference: [`deploy/cas.cool.nginx.conf`](deploy/cas.cool.nginx.conf).
 
 <details>
@@ -583,6 +575,7 @@ cas.cool/
 │   ├── app/
 │   │   ├── (auth)/              # Login / Register
 │   │   ├── (shell)/             # Main app (home, explore, profile, DMs)
+│   │   ├── api/                 # Route Handlers (REST API, auth, uploads)
 │   │   ├── layout.tsx           # Root layout
 │   │   └── globals.css          # Design tokens + Tailwind
 │   ├── components/
@@ -600,16 +593,6 @@ cas.cool/
 │   │   ├── serialize.ts         # Post/user serialization
 │   │   └── utils.ts             # CAS/tag extraction
 │   └── proxy.ts                 # Middleware + rate limiting
-├── services/
-│   └── public-api/              # Independent API process (zero coupling)
-│       ├── src/
-│       │   ├── server.ts        # HTTP server entry
-│       │   ├── routes.ts        # API endpoints
-│       │   ├── auth.ts          # Token authentication
-│       │   ├── manifest.ts      # Capability manifest
-│       │   ├── rate-limit.ts    # Sliding window rate limiter
-│       │   └── config.ts        # Env-driven config
-│       └── tsconfig.json
 ├── prisma/
 │   ├── schema.prisma            # Database schema (single source of truth)
 │   └── migrations/              # SQL migrations
@@ -626,7 +609,7 @@ cas.cool/
 We welcome chemists, developers, and researchers from around the world:
 
 1. 🍴 Fork the repo
-2. 📖 Read [`AGENTS.md`](./AGENTS.md) for coding conventions and architecture
+2. 📖 Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) for coding conventions and architecture
 3. 🔀 Create a feature branch (`git checkout -b feat/your-feature`)
 4. 📮 Submit a Pull Request
 
