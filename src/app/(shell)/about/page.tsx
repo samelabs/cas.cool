@@ -29,7 +29,7 @@ export default function AboutPage() {
           {/* What is it */}
           <section className="mb-8">
             <h2 className="mb-3 text-lg font-bold text-ink">{t.about.whatIs}</h2>
-            <p className="text-[15px] leading-relaxed text-ink-muted">
+            <p className="text-base leading-relaxed text-ink-muted">
               {t.about.description}
             </p>
           </section>
@@ -37,7 +37,7 @@ export default function AboutPage() {
           {/* Features */}
           <section className="mb-8">
             <h2 className="mb-3 text-lg font-bold text-ink">{t.about.features}</h2>
-            <ul className="space-y-3 text-[15px] text-ink-muted">
+            <ul className="space-y-3 text-base text-ink-muted">
               <li className="flex gap-3">
                 <span className="text-brand"><FlaskIcon className="h-5 w-5" /></span>
                 <div>

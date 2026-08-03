@@ -38,7 +38,7 @@ export function ChemicalInfo({
       {names.length > 0 && (
         <div className="mt-1.5 space-y-0.5">
           {names.map((n, i) => (
-            <p key={i} className="text-[15px] leading-relaxed text-ink">
+            <p key={i} className="text-base leading-relaxed text-ink">
               {n}
             </p>
           ))}

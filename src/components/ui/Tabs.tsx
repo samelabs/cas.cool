@@ -47,7 +47,7 @@ export function Tabs({ tabs, value, onChange, className }: TabsProps) {
             onClick={() => onChange(tab.id)}
             onKeyDown={(e) => onKeyDown(e, index)}
             className={cn(
-              'relative flex-1 flex items-center justify-center gap-2 py-4 text-[15px] font-medium transition-colors',
+              'relative flex-1 flex items-center justify-center gap-2 py-4 text-base font-medium transition-colors',
               'hover:bg-surface-hover',
               active ? 'text-ink' : 'text-ink-faint',
             )}

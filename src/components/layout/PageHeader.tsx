@@ -39,6 +39,7 @@ export default function PageHeader({
       <div className="relative flex items-center gap-4 px-4 h-[53px]">
         {backHref && (
           <Link
+            prefetch={false}
             href={backHref}
             className="grid place-items-center w-9 h-9 -ml-1 rounded-full text-ink hover:bg-surface-hover shrink-0"
           >

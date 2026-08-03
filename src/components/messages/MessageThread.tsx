@@ -134,7 +134,7 @@ export default function MessageThread({
                 )}
                 <div className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                   <div
-                    className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-[15px] whitespace-pre-wrap break-words ${
+                    className={`max-w-[78%] rounded-2xl px-3.5 py-2 text-base whitespace-pre-wrap break-words ${
                       mine
                         ? 'bg-brand text-white rounded-br-sm'
                         : 'bg-surface-hover text-ink rounded-bl-sm'

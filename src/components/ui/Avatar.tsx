@@ -105,7 +105,7 @@ export function Avatar({
 
   if (linkHref) {
     return (
-      <Link href={linkHref} className={cn('shrink-0 rounded-full hover:opacity-90 transition-opacity', className)}>
+      <Link href={linkHref} prefetch={false} className={cn('shrink-0 rounded-full hover:opacity-90 transition-opacity', className)}>
         {node}
       </Link>
     )

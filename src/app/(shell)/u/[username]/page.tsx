@@ -210,7 +210,7 @@ export default async function ProfilePage({
           </div>
           <p className="text-ink-muted">@{user.username}</p>
 
-          {user.bio && <p className="mt-3 whitespace-pre-wrap text-[15px] text-ink">{user.bio}</p>}
+          {user.bio && <p className="mt-3 whitespace-pre-wrap text-base text-ink">{user.bio}</p>}
 
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-ink-faint">
             {user.location && (
@@ -262,7 +262,7 @@ export default async function ProfilePage({
               key={t.id}
               href={`/u/${user.username}?tab=${t.id}`}
               className={cn(
-                'relative flex-1 py-4 text-center text-[15px] font-semibold transition-colors hover:bg-surface-hover',
+                'relative flex-1 py-4 text-center text-base font-semibold transition-colors hover:bg-surface-hover',
                 active ? 'text-ink' : 'text-ink-muted',
               )}
             >

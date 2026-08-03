@@ -75,13 +75,13 @@ export function renderContent(text: string): ReactNode[] {
       )
     } else if (cas) {
       nodes.push(
-        <Link key={`c-${key}`} href={`/cas/${cas}`} className="relative z-10 inline-flex items-center rounded-md bg-brand-tint px-1.5 py-0.5 font-mono text-sm text-brand-ink hover:bg-brand/20">
+        <Link key={`c-${key}`} href={`/cas/${cas}`} prefetch={false} className="relative z-10 inline-flex items-center rounded-md bg-brand-tint px-1.5 py-0.5 font-mono text-sm text-brand-ink hover:bg-brand/20">
           {cas}
         </Link>,
       )
     } else if (mention) {
       nodes.push(
-        <Link key={`m-${key}`} href={`/u/${mention.slice(1)}`} className="relative z-10 text-brand hover:underline">
+        <Link key={`m-${key}`} href={`/u/${mention.slice(1)}`} prefetch={false} className="relative z-10 text-brand hover:underline">
           {mention}
         </Link>,
       )
@@ -197,7 +197,7 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
               <span className="font-semibold text-ink-muted">{displayName}</span>
               <span className="text-ink-faint">@{author.username}</span>
             </div>
-            <p className="mt-1 text-[15px] italic leading-relaxed text-ink-faint">
+            <p className="mt-1 text-base italic leading-relaxed text-ink-faint">
               {t.postCard.deleted}
             </p>
           </div>
@@ -211,7 +211,7 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
       'relative px-3 py-2.5 transition-colors hover:bg-surface-hover/40 sm:px-4 sm:py-3',
       variant === 'thread' ? 'z-10' : 'border-b border-line',
     )}>
-      <Link href={postUrl(post)} scroll={false} className="absolute inset-0 z-0" aria-label={t.postCard.openPost} />
+      <Link href={postUrl(post)} scroll={false} prefetch={false} className="absolute inset-0 z-0" aria-label={t.postCard.openPost} />
 
       <div className="flex items-start gap-2.5 sm:gap-3">
         <Avatar src={author.avatar} name={displayName} username={author.username} size="md" href={`/u/${author.username}`} className="relative z-10" />
@@ -224,11 +224,11 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
               profile. */}
 
           <div className="relative flex items-center gap-x-1.5 gap-y-0.5 text-sm">
-            <Link href={`/u/${author.username}`} className="relative z-10 font-semibold text-ink hover:underline">
+            <Link href={`/u/${author.username}`} prefetch={false} className="relative z-10 font-semibold text-ink hover:underline">
               {displayName}
             </Link>
             {author.verificationStatus === 'verified' && <VerifiedBadge className="h-4 w-4 text-brand" />}
-            <Link href={`/u/${author.username}`} className="relative z-10 text-ink-muted hover:underline">
+            <Link href={`/u/${author.username}`} prefetch={false} className="relative z-10 text-ink-muted hover:underline">
               @{author.username}
             </Link>
             {/* Original time hidden when edited — the edit marker below
@@ -264,7 +264,7 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
               Priority: explicit `replyingTo` prop (post-detail page) > per-post
               `post.replyToUsername` (profile Replies tab). */}
           {(replyingTo || post.replyToUsername) && (
-            <p className="mt-0.5 text-[13px] text-ink-faint">
+            <p className="mt-0.5 text-xs text-ink-faint">
               Replying to{' '}
               <Link
                 href={`/u/${replyingTo ?? post.replyToUsername}`}
@@ -281,6 +281,7 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
                 <Link
                   key={chem.id}
                   href={`/cas/${chem.casNumber}`}
+                  prefetch={false}
                   className="relative z-10 inline-flex items-center gap-1 font-mono text-xs text-brand-ink hover:text-brand"
                 >
                   <FlaskIcon className="h-3.5 w-3.5" /> {t.postCard.cas(chem.casNumber)}
@@ -290,7 +291,7 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
           )}
 
           {renderedContent && (
-            <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink">
+            <p className="mt-1 whitespace-pre-wrap break-words text-base leading-relaxed text-ink">
               {renderedContent}
             </p>
           )}
@@ -319,11 +320,12 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
             <Link
               href={postUrl(post.quotedPost)}
               scroll={false}
+              prefetch={false}
               onClick={(e) => e.stopPropagation()}
               className="relative z-10 mt-3 block rounded-xl border border-line/60 p-3 transition-colors hover:bg-surface-hover"
             >
             {post.quotedPost.deletedAt ? (
-              <p className="text-[15px] italic leading-relaxed text-ink-faint">
+              <p className="text-base italic leading-relaxed text-ink-faint">
                 {t.postCard.deleted}
               </p>
             ) : (
@@ -332,18 +334,19 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
                 <Avatar src={post.quotedPost.author.avatar} name={post.quotedPost.author.displayName || post.quotedPost.author.username} username={post.quotedPost.author.username} size="sm" className="shrink-0" />
                 <Link
                   href={`/u/${post.quotedPost.author.username}`}
+                  prefetch={false}
                   onClick={(e) => e.stopPropagation()}
                   className="font-semibold text-ink hover:underline"
                 >
                   {post.quotedPost.author.displayName || post.quotedPost.author.username}
                 </Link>
                 {post.quotedPost.author.verificationStatus === 'verified' && <VerifiedBadge className="h-3.5 w-3.5 text-brand" />}
-                <Link href={`/u/${post.quotedPost.author.username}`} onClick={(e) => e.stopPropagation()} className="text-ink-faint hover:underline">@{post.quotedPost.author.username}</Link>
+                <Link href={`/u/${post.quotedPost.author.username}`} prefetch={false} onClick={(e) => e.stopPropagation()} className="text-ink-faint hover:underline">@{post.quotedPost.author.username}</Link>
                 <span className="text-ink-faint">·</span>
                 <span className="text-ink-faint">{timeAgo(post.quotedPost.createdAt)}</span>
               </div>
               {post.quotedPost.content && (
-                <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink-muted">
+                <p className="mt-1 whitespace-pre-wrap break-words text-base leading-relaxed text-ink-muted">
                   {renderedQuotedContent}
                 </p>
               )}

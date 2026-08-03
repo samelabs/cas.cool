@@ -2,7 +2,6 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import dynamic from 'next/dynamic'
 import { useRouter } from 'next/navigation'
 import { useSWRConfig } from 'swr'
 import { formatNumber } from '@/lib/utils'
@@ -20,12 +19,7 @@ import {
 import type { SafePost } from '@/lib/types'
 import { t } from '@/lib/i18n'
 import { post as apiPost, del } from '@/lib/api-client'
-
-// Lazy-load ShareButton — 390 lines of share overlay JS only when clicked.
-const ShareButton = dynamic(
-  () => import('@/components/posts/ShareButton').then(m => ({ default: m.ShareButton })),
-  { ssr: false },
-)
+import { ShareButton } from '@/components/posts/ShareButton'
 
 export interface PostActionsProps {
   post: SafePost
@@ -64,7 +58,7 @@ function ActionButton({
           Hidden entirely at 0 so empty actions look clean. */}
       <span
         className={cn(
-          'text-[12px] font-medium tabular-nums leading-none',
+          'text-xs font-medium tabular-nums leading-none',
           typeof count === 'number' && count > 0
             ? (active ? activeClass : 'text-ink-faint')
             : 'hidden',
@@ -333,106 +327,91 @@ export function PostActions({ post, hideComment = false, hideRepost = false }: P
   const closeRepostMenu = useCallback(() => setShowRepostMenu(false), [])
 
   return (
-    <div className="flex items-center w-full sm:max-w-[460px]">
+    <div className="flex items-center justify-between w-full sm:max-w-[460px]">
       {/* Reply */}
       {!hideComment && (
-        <div className="flex-1 min-w-0">
-          <ActionButton
-            label={t.postActions.reply}
-            count={post._count?.replies}
-            href={postUrl(post)}
-            hoverClass="group-hover:bg-brand-tint group-hover:text-brand"
-          >
-            <CommentIcon className="h-[18px] w-[18px] text-ink-faint group-hover:text-brand" />
-          </ActionButton>
-        </div>
+        <ActionButton
+          label={t.postActions.reply}
+          count={post._count?.replies}
+          href={postUrl(post)}
+          hoverClass="group-hover:bg-brand-tint group-hover:text-brand"
+        >
+          <CommentIcon className="h-[18px] w-[18px] text-ink-faint group-hover:text-brand" />
+        </ActionButton>
       )}
 
       {/* Repost / Quote — hidden for quote posts (prevents nested quotes) */}
       {!hideRepost && (
-        <div className="relative flex-1 min-w-0">
-        <ActionButton
-          label={reposted ? t.postActions.undoRepost : t.postActions.repost}
-          count={repostCount}
-          active={reposted}
-          loading={repostPending}
-          onClick={() => setShowRepostMenu((v) => !v)}
-          activeClass="text-brand"
-          hoverClass="group-hover:bg-brand-tint group-hover:text-brand"
-        >
-          <RepostIcon className={cn('h-[18px] w-[18px]', reposted ? 'text-brand' : 'text-ink-faint')} filled={reposted} />
-        </ActionButton>
-        <Popover open={showRepostMenu} onClose={closeRepostMenu} align="left">
-          <MenuItem
-            icon={<RepostIcon className="h-4 w-4" />}
+        <div className="relative">
+          <ActionButton
             label={reposted ? t.postActions.undoRepost : t.postActions.repost}
-            onClick={() => { setShowRepostMenu(false); toggleRepost(); }}
-          />
-          <div className="mx-3 border-t border-line" />
-          <MenuItem
-            icon={<CommentIcon className="h-4 w-4" />}
-            label={t.postActions.quote}
-            onClick={() => {
-              setShowRepostMenu(false)
-              if (!requireAuth()) return
-              router.push(`/compose?quote=${post.id}`)
-            }}
-          />
-        </Popover>
+            count={repostCount}
+            active={reposted}
+            loading={repostPending}
+            onClick={() => setShowRepostMenu((v) => !v)}
+            activeClass="text-brand"
+            hoverClass="group-hover:bg-brand-tint group-hover:text-brand"
+          >
+            <RepostIcon className={cn('h-[18px] w-[18px]', reposted ? 'text-brand' : 'text-ink-faint')} filled={reposted} />
+          </ActionButton>
+          <Popover open={showRepostMenu} onClose={closeRepostMenu} align="left">
+            <MenuItem
+              icon={<RepostIcon className="h-4 w-4" />}
+              label={reposted ? t.postActions.undoRepost : t.postActions.repost}
+              onClick={() => { setShowRepostMenu(false); toggleRepost(); }}
+            />
+            <div className="mx-3 border-t border-line" />
+            <MenuItem
+              icon={<CommentIcon className="h-4 w-4" />}
+              label={t.postActions.quote}
+              onClick={() => {
+                setShowRepostMenu(false)
+                if (!requireAuth()) return
+                router.push(`/compose?quote=${post.id}`)
+              }}
+            />
+          </Popover>
         </div>
       )}
 
       {/* Like */}
-      <div className="flex-1 min-w-0">
-        <ActionButton
-          label={liked ? t.postActions.unlike : t.postActions.like}
-          count={likeCount}
-          active={liked}
-          loading={likePending}
-          onClick={toggleLike}
-          activeClass="text-danger"
-          hoverClass="group-hover:bg-danger-tint group-hover:text-danger"
-        >
-          <span key={likeAnim} className={cn(likeAnim > 0 && 'inline-flex animate-[heart-pop_0.45s_ease-out]')}>
-            <HeartIcon className={cn('h-[18px] w-[18px]', liked ? 'text-danger' : 'text-ink-faint')} filled={liked} />
-          </span>
-        </ActionButton>
-      </div>
+      <ActionButton
+        label={liked ? t.postActions.unlike : t.postActions.like}
+        count={likeCount}
+        active={liked}
+        loading={likePending}
+        onClick={toggleLike}
+        activeClass="text-danger"
+        hoverClass="group-hover:bg-danger-tint group-hover:text-danger"
+      >
+        <span key={likeAnim} className={cn(likeAnim > 0 && 'inline-flex animate-[heart-pop_0.45s_ease-out]')}>
+          <HeartIcon className={cn('h-[18px] w-[18px]', liked ? 'text-danger' : 'text-ink-faint')} filled={liked} />
+        </span>
+      </ActionButton>
 
       {/* Views */}
-      <div className="flex flex-1 min-w-0 items-center gap-1">
-        <span className="flex h-8 w-8 items-center justify-center">
-          <ViewIcon className="h-[18px] w-[18px] text-ink-faint" />
-        </span>
-        <span
-          className={cn(
-            'text-[12px] font-medium tabular-nums leading-none',
-            post.views > 0 ? 'text-ink-faint' : 'hidden',
-          )}
-        >
-          {post.views > 0 ? formatNumber(post.views) : ''}
-        </span>
-      </div>
+      <ActionButton
+        label={t.postActions.views}
+        count={post.views > 0 ? post.views : undefined}
+      >
+        <ViewIcon className="h-[18px] w-[18px] text-ink-faint" />
+      </ActionButton>
 
       {/* Bookmark */}
-      <div className="flex-1 min-w-0">
-        <ActionButton
-          label={bookmarked ? t.postActions.removeBookmark : t.postActions.bookmark}
-          count={bookmarkCount}
-          active={bookmarked}
-          loading={bookmarkPending}
-          onClick={toggleBookmark}
-          activeClass="text-brand"
-          hoverClass="group-hover:bg-brand/10 group-hover:text-brand"
-        >
-          <BookmarkIcon className={cn('h-[18px] w-[18px]', bookmarked ? 'text-brand' : 'text-ink-faint')} filled={bookmarked} />
-        </ActionButton>
-      </div>
+      <ActionButton
+        label={bookmarked ? t.postActions.removeBookmark : t.postActions.bookmark}
+        count={bookmarkCount}
+        active={bookmarked}
+        loading={bookmarkPending}
+        onClick={toggleBookmark}
+        activeClass="text-brand"
+        hoverClass="group-hover:bg-brand/10 group-hover:text-brand"
+      >
+        <BookmarkIcon className={cn('h-[18px] w-[18px]', bookmarked ? 'text-brand' : 'text-ink-faint')} filled={bookmarked} />
+      </ActionButton>
 
       {/* Share */}
-      <div className="flex-1 min-w-0">
-        <ShareButton post={post} variant="icon" />
-      </div>
+      <ShareButton post={post} variant="icon" />
     </div>
   )
 }

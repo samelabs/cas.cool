@@ -1,13 +1,10 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
 import { getCurrentUser } from '@/lib/auth'
 import Providers from '@/components/Providers'
 import Analytics from '@/components/Analytics'
 import { t } from '@/lib/i18n'
 import { SITE_URL } from '@/lib/site'
-
-const inter = Inter({ subsets: ['latin'], variable: '--font-inter', display: 'swap' })
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -45,7 +42,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const currentUser = await getCurrentUser()
 
   return (
-    <html lang="en" className={`${inter.variable} antialiased`} suppressHydrationWarning>
+    <html lang="en" className="antialiased" suppressHydrationWarning>
       <head>
         {/* Agent discovery: point AI agents to the machine-readable API manifest */}
         <link rel="llms-txt" href="/llms.txt" />

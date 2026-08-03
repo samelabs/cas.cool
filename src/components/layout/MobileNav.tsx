@@ -28,6 +28,7 @@ export function MobileNav() {
 
       {/* Center compose */}
       <Link
+        prefetch={false}
         href="/compose"
         aria-label={t.nav.newPost}
         className="-mt-5 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand text-white shadow-lg shadow-brand/30 transition-transform hover:scale-105 active:scale-95"
@@ -66,11 +67,11 @@ function NavIcon({
   badge?: number
 }) {
   return (
-    <Link href={href} aria-current={active ? 'page' : undefined} className="relative flex h-14 w-full items-center justify-center">
+    <Link prefetch={false} href={href} aria-current={active ? 'page' : undefined} className="relative flex h-14 w-full items-center justify-center">
       <span className="relative">
         <Icon className={cn('h-6 w-6 transition-colors', active ? 'text-brand' : 'text-ink-faint')} />
         {badge > 0 && (
-          <span className="absolute -right-1.5 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white ring-2 ring-surface">
+          <span className="absolute -right-1.5 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-brand px-1 text-xs font-bold text-white ring-2 ring-surface">
             {badge > 99 ? '99+' : badge}
           </span>
         )}

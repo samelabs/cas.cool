@@ -173,7 +173,7 @@ export function ShareButton({
       className="group flex items-center gap-1"
       aria-label={t.postMenu.share}
     >
-      <span className="flex h-8 w-8 items-center justify-center rounded-full transition-colors group-hover:bg-brand-tint group-hover:text-brand">
+      <span className="flex h-9 w-9 items-center justify-center rounded-full transition-colors group-hover:bg-brand-tint group-hover:text-brand">
         <ShareIcon className="h-[18px] w-[18px] text-ink-faint group-hover:text-brand" />
       </span>
     </button>
@@ -244,7 +244,7 @@ function ShareOverlay({
       <div className="w-full max-w-[360px] animate-[sharePanelIn_200ms_ease-out] overflow-hidden rounded-2xl border border-line-strong bg-surface shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-line px-4 py-3">
-          <h2 className="text-[15px] font-bold text-ink">{t.postMenu.share}</h2>
+          <h2 className="text-base font-bold text-ink">{t.postMenu.share}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -269,7 +269,7 @@ function ShareOverlay({
               <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-hover text-ink-muted">
                 {target.icon}
               </span>
-              <span className="text-[11px] font-medium text-ink-muted">{target.label}</span>
+              <span className="text-xs font-medium text-ink-muted">{target.label}</span>
             </button>
           ))}
         </div>

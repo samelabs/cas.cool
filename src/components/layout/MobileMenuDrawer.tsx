@@ -131,6 +131,7 @@ export function MobileMenuDrawer({
 
             {/* User info */}
             <Link
+              prefetch={false}
               href={`/u/${currentUser.username}`}
               className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-hover"
             >
@@ -141,7 +142,7 @@ export function MobileMenuDrawer({
                 size="md"
               />
               <div className="min-w-0 leading-tight">
-                <div className="truncate text-[15px] font-bold text-ink">
+                <div className="truncate text-base font-bold text-ink">
                   {currentUser.displayName || currentUser.username}
                 </div>
                 <div className="truncate text-sm text-ink-faint">
@@ -160,10 +161,11 @@ export function MobileMenuDrawer({
                 const { Icon } = item
                 return (
                   <Link
+                    prefetch={false}
                     key={item.label}
                     href={item.href}
                     className={cn(
-                      'flex items-center gap-4 rounded-xl px-3 py-3 text-[16px] transition-colors',
+                      'flex items-center gap-4 rounded-xl px-3 py-3 text-base transition-colors',
                       active
                         ? 'font-bold text-brand'
                         : 'font-medium text-ink hover:bg-surface-hover',
@@ -172,7 +174,7 @@ export function MobileMenuDrawer({
                     <span className="relative">
                       <Icon className="h-[22px] w-[22px]" />
                       {item.badge > 0 && (
-                        <span className="absolute -right-1.5 -top-1 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white ring-2 ring-surface">
+                        <span className="absolute -right-1.5 -top-1 flex h-[16px] min-w-[16px] items-center justify-center rounded-full bg-brand px-1 text-xs font-bold text-white ring-2 ring-surface">
                           {item.badge > 99 ? '99+' : item.badge}
                         </span>
                       )}
@@ -188,7 +190,7 @@ export function MobileMenuDrawer({
               <button
                 type="button"
                 onClick={() => void logout()}
-                className="flex w-full items-center gap-4 rounded-xl px-3 py-3 text-[16px] font-medium text-ink-faint transition-colors hover:bg-danger-tint hover:text-danger"
+                className="flex w-full items-center gap-4 rounded-xl px-3 py-3 text-base font-medium text-ink-faint transition-colors hover:bg-danger-tint hover:text-danger"
               >
                 <LogoutIcon className="h-[22px] w-[22px]" />
                 {t.nav.logOut}

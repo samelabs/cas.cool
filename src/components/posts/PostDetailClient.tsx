@@ -59,7 +59,7 @@ function MainPost({ post, onDeleted, authorFollowed = false }: { post: SafePost;
           <div className="min-w-0 flex-1">
             <p className="font-semibold text-ink-muted">{displayName}</p>
             <p className="text-sm text-ink-faint">@{author.username}</p>
-            <p className="mt-2 text-[17px] italic leading-relaxed text-ink-faint">
+            <p className="mt-2 text-base italic leading-relaxed text-ink-faint">
               {t.postCard.deleted}
             </p>
           </div>
@@ -87,12 +87,12 @@ function MainPost({ post, onDeleted, authorFollowed = false }: { post: SafePost;
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <Link href={`/u/${author.username}`} className="font-bold text-ink hover:underline truncate">
+            <Link href={`/u/${author.username}`} prefetch={false} className="font-bold text-ink hover:underline truncate">
               {displayName}
             </Link>
             {author.verificationStatus === 'verified' && <VerifiedBadge className="h-4 w-4 text-brand shrink-0" />}
           </div>
-          <Link href={`/u/${author.username}`} className="text-sm text-ink-muted hover:underline">
+          <Link href={`/u/${author.username}`} prefetch={false} className="text-sm text-ink-muted hover:underline">
             @{author.username}
           </Link>
         </div>
@@ -109,7 +109,7 @@ function MainPost({ post, onDeleted, authorFollowed = false }: { post: SafePost;
       {/* Content */}
       <div className="mt-3">
         {post.content && (
-          <p className="whitespace-pre-wrap break-words text-[17px] leading-relaxed text-ink">
+          <p className="whitespace-pre-wrap break-words text-base leading-relaxed text-ink">
             {renderedContent}
           </p>
         )}
@@ -120,6 +120,7 @@ function MainPost({ post, onDeleted, authorFollowed = false }: { post: SafePost;
               <Link
                 key={chem.id}
                 href={`/cas/${chem.casNumber}`}
+                prefetch={false}
                 className="inline-flex items-center gap-1 font-mono text-xs text-brand-ink hover:text-brand"
               >
                 CAS {chem.casNumber}
@@ -143,10 +144,11 @@ function MainPost({ post, onDeleted, authorFollowed = false }: { post: SafePost;
         <Link
           href={postUrl(post.quotedPost)}
           scroll={false}
+          prefetch={false}
           className="mt-3 block rounded-xl border border-line/60 p-3 transition-colors hover:bg-surface-hover"
         >
           {post.quotedPost.deletedAt ? (
-            <p className="text-[15px] italic leading-relaxed text-ink-faint">
+            <p className="text-base italic leading-relaxed text-ink-faint">
               {t.postCard.deleted}
             </p>
           ) : (
@@ -158,7 +160,7 @@ function MainPost({ post, onDeleted, authorFollowed = false }: { post: SafePost;
                 <span className="text-ink-faint hover:underline">@{post.quotedPost.author.username}</span>
               </div>
               {post.quotedPost.content && (
-                <p className="mt-1 whitespace-pre-wrap break-words text-[15px] leading-relaxed text-ink-muted">
+                <p className="mt-1 whitespace-pre-wrap break-words text-base leading-relaxed text-ink-muted">
                   {renderedQuotedContent}
                 </p>
               )}

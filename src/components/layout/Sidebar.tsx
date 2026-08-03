@@ -40,7 +40,7 @@ interface NavItem {
 function Badge({ count }: { count: number }) {
   if (!count) return null
   return (
-    <span className="absolute -top-1 -right-1 flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-brand px-1 text-[11px] font-bold text-white ring-2 ring-surface">
+    <span className="absolute -top-1 -right-1 flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-brand px-1 text-xs font-bold text-white ring-2 ring-surface">
       {count > 99 ? '99+' : count}
     </span>
   )
@@ -79,6 +79,7 @@ export function Sidebar({ currentUser: userProp, needsDocuments = false }: Sideb
     <nav className="flex h-full w-full flex-col gap-0.5 py-1 pl-2 pr-1 xl:px-3">
       {/* Logo */}
       <Link
+        prefetch={false}
         href="/"
         className="mb-2 flex items-center justify-center rounded-full px-2 py-3 text-brand transition-colors hover:bg-surface-hover xl:justify-start xl:gap-2"
         title={t.brand.name}
@@ -95,6 +96,7 @@ export function Sidebar({ currentUser: userProp, needsDocuments = false }: Sideb
         const { Icon } = item
         return (
           <Link
+            prefetch={false}
             key={item.label}
             href={item.href}
             aria-label={item.label}
@@ -132,6 +134,7 @@ export function Sidebar({ currentUser: userProp, needsDocuments = false }: Sideb
         {currentUser ? (
           <div className="flex flex-col items-center gap-0.5 xl:flex-row xl:items-center xl:gap-1">
             <Link
+              prefetch={false}
               href={`/u/${currentUser.username}`}
               className="flex min-w-0 flex-1 items-center justify-center rounded-full p-2 transition-colors hover:bg-surface-hover xl:justify-start xl:gap-3"
               title={currentUser.displayName || currentUser.username}

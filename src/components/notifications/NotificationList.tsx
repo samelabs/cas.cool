@@ -51,7 +51,7 @@ function NotificationRow({ n }: { n: SafeNotification }) {
       </span>
       <div className="min-w-0 flex-1">
         <Avatar src={avatar} name={displayName} username={username} size="sm" />
-        <p className="mt-1.5 text-[15px] text-ink">
+        <p className="mt-1.5 text-base text-ink">
           <span className="inline-flex items-center gap-1 font-semibold text-ink">
             {displayName}
             {verified && <VerifiedBadge className="h-4 w-4 text-brand" />}
@@ -77,18 +77,7 @@ interface ApiResponse {
   nextCursor: string | null
 }
 
-import { getNotifications } from '@/actions/social'
-
-const fetcher = async (url: string): Promise<ApiResponse> => {
-  const parsed = new URL(url, 'http://localhost')
-  const cursor = parsed.searchParams.get('cursor') ?? undefined
-  const result = await getNotifications(cursor)
-  if (!result.ok) throw new Error(result.error)
-  return {
-    notifications: result.data.notifications as SafeNotification[],
-    nextCursor: result.data.nextCursor,
-  }
-}
+import { swrFetcher } from '@/lib/api-client'
 
 export default function NotificationList({ initialNotifications, initialCursor }: NotificationListProps) {
   const sentinelRef = useRef<HTMLDivElement>(null)
@@ -104,7 +93,7 @@ export default function NotificationList({ initialNotifications, initialCursor }
         initialCursor
       return cursor ? `/api/notifications?cursor=${encodeURIComponent(cursor)}` : null
     },
-    fetcher,
+    swrFetcher<ApiResponse>,
     { revalidateFirstPage: false },
   )
 

@@ -20,6 +20,7 @@ function TrendingRow({ rank, item }: { rank: number; item: TrendingChemical }) {
   return (
     <Link
       href={`/cas/${item.casNumber}`}
+      prefetch={false}
       className="block rounded-xl px-4 py-2.5 transition-colors hover:bg-surface-hover"
     >
       <div className="flex items-center justify-between">
@@ -72,6 +73,7 @@ export function RightPanel({ trending = [], suggestions = [] }: RightPanelProps)
           </p>
         )}
         <Link
+          prefetch={false}
           href="/explore"
           className="block border-t border-line/50 px-4 py-3 text-sm text-brand hover:bg-surface-hover"
         >
@@ -95,6 +97,7 @@ export function RightPanel({ trending = [], suggestions = [] }: RightPanelProps)
           <p className="px-4 pb-4 text-sm text-ink-muted">{t.explore.noSuggestions}</p>
         )}
         <Link
+          prefetch={false}
           href="/explore"
           className="block border-t border-line px-4 py-3 text-sm text-brand hover:bg-surface-hover"
         >
@@ -104,9 +107,9 @@ export function RightPanel({ trending = [], suggestions = [] }: RightPanelProps)
 
       <footer className="px-1 text-xs leading-relaxed text-ink-faint">
         <p>
-          <Link href="/about" className="hover:text-ink-muted">{t.about.title}</Link> ·{' '}
-          <Link href="/explore" className="hover:text-ink-muted">{t.nav.explore}</Link> ·{' '}
-          <Link href="/settings" className="hover:text-ink-muted">{t.nav.settings}</Link>
+          <Link prefetch={false} href="/about" className="hover:text-ink-muted">{t.about.title}</Link> ·{' '}
+          <Link prefetch={false} href="/explore" className="hover:text-ink-muted">{t.nav.explore}</Link> ·{' '}
+          <Link prefetch={false} href="/settings" className="hover:text-ink-muted">{t.nav.settings}</Link>
         </p>
         <p className="mt-1">© {new Date().getFullYear()} CAS.cool · <Link href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="hover:text-ink-muted">v{VERSION}</Link></p>
       </footer>

@@ -28,22 +28,22 @@ export default function TimelineTopBar({
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-brand/10 ring-1 ring-brand/20">
             <FlaskIcon className="h-6 w-6 text-brand" />
           </div>
-          <p className="text-[15px] font-semibold leading-snug text-ink">
+          <p className="text-base font-semibold leading-snug text-ink">
             Discover and share chemistry.
           </p>
-          <p className="-mt-1 text-[13px] leading-snug text-ink-muted">
+          <p className="-mt-1 text-xs leading-snug text-ink-muted">
             CAS-numbered posts, member connections, real-time updates.
           </p>
           <div className="mt-1 flex w-full items-center gap-3">
             <Link
               href="/login"
-              className="flex-1 rounded-full bg-surface py-2.5 text-center text-[15px] font-bold text-brand ring-1 ring-brand/30 transition-colors hover:bg-brand-tint"
+              className="flex-1 rounded-full bg-surface py-2.5 text-center text-base font-bold text-brand ring-1 ring-brand/30 transition-colors hover:bg-brand-tint"
             >
               Log in
             </Link>
             <Link
               href="/register"
-              className="flex-1 rounded-full bg-brand py-2.5 text-center text-[15px] font-bold text-white transition-colors hover:bg-brand-strong"
+              className="flex-1 rounded-full bg-brand py-2.5 text-center text-base font-bold text-white transition-colors hover:bg-brand-strong"
             >
               Sign up
             </Link>

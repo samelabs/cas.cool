@@ -160,6 +160,7 @@ export const en = {
     quote: 'Quote',
     like: 'Like',
     unlike: 'Unlike',
+    views: 'Views',
     bookmark: 'Bookmark',
     removeBookmark: 'Remove bookmark',
     actionFailed: 'Action failed',
@@ -215,6 +216,7 @@ export const en = {
     nothingHereYet: 'Nothing here yet',
     endOfFeed: "You're all caught up",
     newPosts: (count: number) => count === 1 ? '1 new post' : `${count} new posts`,
+    newPostsAvailable: 'New posts available',
   },
 
   // ─── Profile ───────────────────────────────────────────

@@ -11,8 +11,7 @@ import { cn } from '@/lib/cn'
 import { FEED_PAGE_SIZE } from '@/lib/feed-constants'
 import { usePullToRefresh } from '@/lib/usePullToRefresh'
 import type { SafePost } from '@/lib/types'
-import { getTimeline, getNewPostCount } from '@/actions/posts'
-import { swrFetcher } from '@/lib/api-client'
+import { get, swrFetcher } from '@/lib/api-client'
 
 /** Build the cache key for a given page. This string is now purely a SWR
  *  cache identifier — the fetcher parses it back into getTimeline params. */
@@ -90,11 +89,9 @@ function PullIndicator({
 // ─── New posts banner ───────────────────────────────────────
 
 function NewPostsBanner({
-  count,
   loading,
   onClick,
 }: {
-  count: number
   loading: boolean
   onClick: () => void
 }) {
@@ -103,7 +100,7 @@ function NewPostsBanner({
       type="button"
       onClick={onClick}
       disabled={loading}
-      className="sticky top-0 z-20 flex w-full items-center justify-center gap-1.5 border-b border-brand/20 bg-brand-tint/80 py-2 text-[14px] font-bold text-brand backdrop-blur-sm transition-colors hover:bg-brand-tint disabled:opacity-60"
+      className="sticky top-0 z-20 flex w-full items-center justify-center gap-1.5 border-b border-brand/20 bg-brand-tint/80 py-2 text-sm font-bold text-brand backdrop-blur-sm transition-colors hover:bg-brand-tint disabled:opacity-60"
       style={{ animation: 'banner-in 0.3s ease' }}
     >
       {loading ? (
@@ -123,7 +120,7 @@ function NewPostsBanner({
           />
         </svg>
       )}
-      {t.feed.newPosts(count)}
+      {t.feed.newPostsAvailable}
     </button>
   )
 }
@@ -158,7 +155,7 @@ function Tabs({
             type="button"
             onClick={() => onChange(t.id)}
             className={cn(
-              'relative flex-1 py-3.5 text-center text-[15px] font-semibold transition-colors hover:bg-surface-hover',
+              'relative flex-1 py-3.5 text-center text-base font-semibold transition-colors hover:bg-surface-hover',
               active ? 'text-ink' : 'text-ink-muted',
             )}
           >
@@ -242,8 +239,10 @@ function TimelineFeedInner({
     if (!since) return
 
     try {
-      const result = await getTimeline({ tab, since: since.toISOString(), take: 50 })
-      if (!result.ok) return
+      const result = await get<{ posts: SafePost[]; nextCursor: string | null }>(
+        `/api/posts?tab=${tab}&since=${encodeURIComponent(since.toISOString())}&take=50`,
+      )
+      if (!result.ok || !result.data) return
       const fetched = result.data.posts || []
 
       if (fetched.length > 0) {
@@ -254,7 +253,7 @@ function TimelineFeedInner({
             const existingIds = new Set(
               pages.flatMap((p) => (p ? p.posts.map((post) => post.id) : [])),
             )
-            const toPrepend = fetched.filter((p) => !existingIds.has(p.id))
+            const toPrepend = fetched.filter((p: SafePost) => !existingIds.has(p.id))
             if (toPrepend.length === 0) return pages
             return [{ ...first, posts: [...toPrepend, ...first.posts] }, ...pages.slice(1)]
           },
@@ -292,9 +291,11 @@ function TimelineFeedInner({
       if (!since) return
 
       try {
-        const result = await getNewPostCount(since.toISOString(), 'latest')
-        if (cancelled || !result.ok) return
-        if (!cancelled) setNewPostsCount(result.data.count || 0)
+        const result = await get<{ posts: SafePost[]; nextCursor: string | null }>(
+          `/api/posts?tab=latest&since=${encodeURIComponent(since.toISOString())}&take=1`,
+        )
+        if (cancelled || !result.ok || !result.data) return
+        if (!cancelled) setNewPostsCount(result.data.posts.length > 0 ? 1 : 0)
       } catch {
         // network errors are silent — next poll will retry
       }
@@ -411,7 +412,6 @@ function TimelineFeedInner({
 
       {showBanner && (
         <NewPostsBanner
-          count={newPostsCount}
           loading={bannerLoading}
           onClick={handleBannerClick}
         />
