@@ -109,7 +109,7 @@ export function MobileMenuDrawer({
 
           {/* Slide-in panel from left */}
           <nav
-            className="absolute left-0 top-0 flex h-[100dvh] w-[300px] max-w-[85vw] flex-col bg-surface shadow-2xl"
+            className="absolute inset-y-0 left-0 flex w-[300px] max-w-[85vw] flex-col bg-surface shadow-2xl"
           >
             {/* Header with logo + close button */}
             <div className="flex items-center justify-between px-5 py-4">

@@ -15,7 +15,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
     <BadgeProvider initialNotificationCount={notificationCount} initialMessageCount={messageCount}>
       <div className="mx-auto flex w-full max-w-[1290px] justify-center">
         {/* Left sidebar — hidden on mobile, icon-only at md, full at xl */}
-        <aside className="sticky top-0 hidden h-[100dvh] shrink-0 md:block md:w-[72px] xl:w-[275px]">
+        <aside className="sticky top-0 hidden max-h-[100dvh] shrink-0 md:block md:w-[72px] xl:w-[275px]">
           <Sidebar
             currentUser={currentUser}
             needsDocuments={needsDocuments}
@@ -31,7 +31,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
         </main>
 
         {/* Right panel — hidden below lg */}
-        <aside className="sticky top-0 hidden h-[100dvh] w-[350px] shrink-0 overflow-y-auto lg:block">
+        <aside className="sticky top-0 hidden max-h-[100dvh] w-[350px] shrink-0 overflow-y-auto lg:block">
           <RightPanel trending={trending} suggestions={suggestions} />
         </aside>
       </div>

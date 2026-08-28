@@ -85,16 +85,34 @@
 
    Two scroll models, explicitly chosen per page:
 
-   MODEL A — body scroll (default, most pages)
+   MODEL A — body scroll (default, all content pages)
      Content flows naturally inside <main>. The window scrolls.
      Sticky headers use `sticky top-0`.
      <main> has `min-h-[100dvh]` so short pages still fill the viewport.
 
-   MODEL B — container scroll (messages/chat only)
-     The page wraps itself in a `h-[100dvh] flex flex-col overflow-hidden`
-     container. The header is `shrink-0`. The scroll area is `flex-1
-     min-h-0 overflow-y-auto`. Never use calc(100dvh - Npx) — let
-     flexbox compute the height.
+   MODEL B — app shell (messages/[id] + messages/new only)
+     Mobile (<md): the page is `fixed inset-0 flex flex-col overflow-hidden`
+     with `pb-14` reserving the bottom nav. Height truth comes from
+     viewport anchoring — NEVER from a viewport-length unit.
+     Desktop (md+): `md:static md:h-[100dvh]` in-flow (desktop viewports
+     have no toolbar state machine; the unit is safe there).
+     The header is `shrink-0`. The scroll area is `flex-1 min-h-0
+     overflow-y-auto`. NEVER use calc(100dvh - Npx): the toolbar gap is
+     reserved via padding, and flexbox computes every remaining height.
+
+   VIEWPORT-UNIT RULES (applies to BOTH models):
+     Allowed  — boundary uses only: min-h fill floors and max-h clip
+                ceilings (body, main, auth/error pages, ImageModal,
+                PostDetailClient's chained-posts floor), including floors
+                with constant offsets like min-h-[calc(100dvh-54px)].
+                Boundaries do not pin height: a stale value at cold
+                restore costs at most a scroll, never a locked-in error.
+     Forbidden — anything that pins height: h-[100dvh] in the mobile
+                 document flow, calc(viewport-unit - Npx) as a height
+                 source, and any viewport unit on fixed widgets: those
+                 anchor with inset (bottom nav inset-x-0 bottom-0,
+                 overlays inset-0, drawers inset-y-0 inherit the
+                 overlay). Exception: MODEL B's desktop md:h-[100dvh].
 
    SCROLL POSITIONING RULE:
      To scroll a container to its bottom (chat), set
