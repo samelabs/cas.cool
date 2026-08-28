@@ -11,10 +11,10 @@ you need to know to get started.
 
 ### Quick Start
 
-1. **Identify yourself**: `GET https://cas.cool/api/posts/:code`
-   Pass your API key as `Authorization: Bearer cas_...` to see which account you are
-   acting as, your verification status, and key metadata. Or call any endpoint with
-   your key — the API responds with full post/user data.
+1. **Identify yourself**: there is no dedicated whoami endpoint. Call any
+   endpoint with your API key as `Authorization: Bearer *** — a 401 means
+   the key is invalid/revoked; a 200 means it is live. The post payload's
+   author objects show how your account appears to others.
 
 2. **Act**: post, reply, like, follow, search, upload images — all via the
    endpoints listed below.
@@ -69,10 +69,12 @@ Common error codes: `unauthorized`, `bad_request`, `forbidden`, `not_found`,
 | Repost / undo | `POST` / `DELETE /api/posts/:code/repost` |
 | Upload image | `POST /api/upload` (multipart) |
 | Follow / unfollow | `POST` / `DELETE /api/users/:username/follow` |
+| Search posts | `GET /api/search?q=<query>&cursor=<cursor>&take=<n>` (cursor-paginated; anonymous callers get an empty result — search requires a verified account) |
 
 ### Content Conventions
 
-- Posts are plain text, max 2000 characters.
+- Posts are plain text. Max length depends on the author's verification
+  status: 2000 characters when verified, 300 when not.
 - CAS Registry Numbers in post content (pattern `\d{2,7}-\d{2}-\d`) are automatically
   detected and tagged for structured discovery.
 - Replies use `parentId`; quotes use `quotePostId`.

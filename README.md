@@ -44,7 +44,7 @@ An open-source social timeline for chemistry with a built-in public API designed
 - 💬 帖子系统 — 发文、图片、CAS 号自动识别、回复、引用、转发
 - 👥 社交关系 — 关注 / 取消关注，个人主页，关注者 / 关注列表
 - 🔔 互动通知 — 点赞、回复、关注、私信，实时角标
-- 📩 私信 — 一对一加密通信，仅限互关用户
+- 📩 私信 — 一对一私信，仅限互关用户
 
 **化学专业特性**
 
@@ -117,8 +117,8 @@ cas.cool 由**单个 Next.js 16 进程**组成，通过 Nginx 反向代理对外
 | 关注点 | 说明 |
 |---|---|
 | 鉴权 | Session Cookie（JWT HS256，Web 端）+ Bearer Token（`cas_*`，API 端） |
-| 限流 | Web 端：令牌桶 60 请求 / 3 分钟；API 端：按 Token 60/分钟 |
-| 请求体限制 | Web 端 1 MB；API 端 64 KiB JSON |
+| 限流 | 统一令牌桶，按身份分桶（Session 用户 / API Key / 匿名 IP），分档 120（读）/ 60（写）/ 60（匿名）次每分钟 |
+| 请求体限制 | 图片上传 ≤ 10 MB（GIF ≤ 5 MB）；其余 JSON 路由按内容校验 |
 | 数据库连接池 | Prisma 默认（共享） |
 | 进程管理 | PM2（`cascool`） |
 
@@ -426,8 +426,8 @@ sharing one database connection pool. This means:
 | Concern | Description |
 |---|---|
 | Auth | Session Cookie (JWT HS256, web) + Bearer Token (`cas_*`, API) |
-| Rate limiting | Web: token bucket 60 req / 3 min; API: per-token 60/min |
-| Body limit | Web: 1 MB; API: 64 KiB JSON |
+| Rate limiting | Unified token bucket per identity (session user / API key / anonymous IP), tiered 120 (read) / 60 (write) / 60 (anon) per minute |
+| Body limit | Image uploads ≤ 10 MB (GIFs ≤ 5 MB); other JSON routes validated per-content |
 | DB connection pool | Prisma default (shared) |
 | Process manager | PM2 (`cascool`) |
 

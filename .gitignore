@@ -44,7 +44,6 @@ next-env.d.ts
 
 # runtime data — never commit
 /public/uploads/
-/hgs-data/
 /logs/
 
 # one-off audit snapshots (kept locally, not in VCS)
