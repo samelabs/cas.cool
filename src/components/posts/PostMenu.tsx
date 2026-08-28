@@ -130,7 +130,11 @@ export function PostMenu({
       <button
         type="button"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen((v) => !v) }}
-        className="grid h-9 w-9 place-items-center rounded-full text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink"
+        // Visible circle stays 36px; the ::before pseudo extends the
+        // touch target vertically (44px+ mobile minimum) — vertical only,
+        // matching ActionButton: horizontal -inset-2 would overlap the
+        // neighbouring action button's hit area.
+        className="relative grid h-9 w-9 place-items-center rounded-full text-ink-faint transition-colors hover:bg-surface-hover hover:text-ink before:absolute before:-top-2 before:-bottom-2 before:left-0 before:right-0 before:rounded-full before:content-['']"
         aria-label={t.common.moreOptions}
         aria-expanded={open}
       >

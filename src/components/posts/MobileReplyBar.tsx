@@ -169,7 +169,7 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
           size="sm"
         />
         <span className="flex-1 text-left text-sm text-ink-faint">
-          Post your reply
+          {t.messages.replyPlaceholder}
         </span>
       </button>
     </div>

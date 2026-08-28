@@ -29,15 +29,10 @@ export async function POST(request: NextRequest) {
   const limited = checkRateLimit(auth.identity, 'write')
   if (limited) return limited
 
-  // 3. Permission: verified users only
-  if (!canUploadMedia(auth.identity.user)) {
-    return Response.json(
-      { error: { code: 'forbidden', message: 'Verification required to upload images.' } },
-      { status: 403 },
-    )
-  }
-
-  // 4. Parse multipart
+  // 3. Parse multipart — MUST run before the permission gate below: the
+  //    declared purpose determines which permission applies. Verification
+  //    uploads (ID photos) are how unverified users apply in the first
+  //    place, so they cannot be gated on already being verified.
   let formData: FormData
   try {
     formData = await request.formData()
@@ -62,6 +57,16 @@ export async function POST(request: NextRequest) {
     return Response.json(
       { error: { code: 'bad_request', message: 'Invalid purpose.' } },
       { status: 400 },
+    )
+  }
+
+  // 4. Permission: verified users only — except purpose=verification,
+  //    which is exempt by design (see step 3). Note requireWrite() in
+  //    step 1 already rejected non-active accounts.
+  if (purpose !== 'verification' && !canUploadMedia(auth.identity.user)) {
+    return Response.json(
+      { error: { code: 'forbidden', message: 'Verification required to upload images.' } },
+      { status: 403 },
     )
   }
 

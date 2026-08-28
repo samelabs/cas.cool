@@ -4,12 +4,15 @@
  * Token-bucket per identity key. Keys are either:
  *   - `key:<apiKeyId>` for API Key callers
  *   - `u:<userId>` for session callers
- *   - `ip:<address>` for anonymous callers
+ *   - `ip:<address>` for anonymous callers (XFF last hop, see api-auth.ts)
  *
  * Limits are per-route-tier, not global:
- *   read  → 120/min
- *   write → 60/min
- *   anon  → 60/min (pre-auth, applied by proxy.ts)
+ *   read  → 120/min  (authenticated reads)
+ *   write → 60/min   (authenticated writes, requireWrite routes)
+ *   anon  → 60/min   (anonymous-reachable endpoints that must rate-limit
+ *                     BEFORE any DB work — e.g. /api/auth/check-username.
+ *                     proxy.ts does NOT rate-limit; it only redirects
+ *                     unauthenticated page traffic.)
  */
 
 interface Bucket {
@@ -74,10 +77,11 @@ export function rateLimitKey(identity: {
   method: string
   user: { id: string } | null
   apiKeyId?: string
+  ip?: string | null
 }): string {
   if (identity.method === 'apikey' && identity.apiKeyId) return `key:${identity.apiKeyId}`
   if (identity.method === 'session' && identity.user) return `u:${identity.user.id}`
-  return 'ip:anonymous'
+  return `ip:${identity.ip ?? 'unknown'}`
 }
 
 /**
@@ -89,6 +93,7 @@ export function checkRateLimit(
     method: string
     user: { id: string } | null
     apiKeyId?: string
+    ip?: string | null
   },
   tier: keyof typeof LIMITS = 'read',
 ): Response | null {

@@ -29,18 +29,23 @@ export async function POST(
 
   const submission = await prisma.verificationSubmission.findUnique({
     where: { id: submissionId },
-    select: { userId: true },
+    select: { userId: true, status: true },
   })
   if (!submission) return jsonError(404, 'not_found', 'Submission not found.')
+  // State machine: only pending submissions can be rejected.
+  if (submission.status !== 'pending') {
+    return jsonError(409, 'conflict', 'Submission is not pending review.')
+  }
 
   const body = await request.json().catch(() => ({}))
   const note = typeof body?.note === 'string' ? body.note : undefined
 
   const now = new Date()
 
-  await prisma.$transaction([
-    prisma.verificationSubmission.update({
-      where: { id: submissionId },
+  // Optimistic lock: the update itself re-checks 'pending' (see approve).
+  const [subResult] = await prisma.$transaction([
+    prisma.verificationSubmission.updateMany({
+      where: { id: submissionId, status: 'pending' },
       data: {
         status: 'rejected',
         reviewedBy: admin.id,
@@ -53,6 +58,9 @@ export async function POST(
       data: { verificationStatus: 'unverified' },
     }),
   ])
+  if (subResult.count === 0) {
+    return jsonError(409, 'conflict', 'Submission is not pending review.')
+  }
 
   return Response.json({ ok: true })
 }

@@ -26,6 +26,8 @@ export interface AuthIdentity {
   method: 'apikey' | 'session' | 'anonymous'
   /** API Key row id (only when method === 'apikey') */
   apiKeyId?: string
+  /** Client IP for anonymous rate-limit bucketing (see rate-limit.ts). */
+  ip?: string | null
 }
 
 export interface AuthUser {
@@ -59,7 +61,8 @@ function getSecret(): Uint8Array {
  */
 export async function resolveIdentity(): Promise<AuthIdentity> {
   // 1. Try API Key (Authorization: Bearer cas_...)
-  const header = (await headers()).get('authorization')
+  const h = await headers()
+  const header = h.get('authorization')
   if (header?.startsWith('Bearer ')) {
     const rawKey = header.slice(7)
     if (rawKey.startsWith('cas_') && rawKey.length >= 20 && rawKey.length <= 128) {
@@ -73,7 +76,20 @@ export async function resolveIdentity(): Promise<AuthIdentity> {
   if (identity) return identity
 
   // 3. Anonymous
-  return { authenticated: false, user: null, method: 'anonymous' }
+  return { authenticated: false, user: null, method: 'anonymous', ip: clientIp(h) }
+}
+
+/**
+ * Client IP for anonymous rate-limit keys. Trust only the LAST entry of
+ * X-Forwarded-For (appended by our nginx via proxy_add_x_forwarded_for) —
+ * earlier entries are client-spoofable. Falls back to X-Real-IP (set by
+ * nginx from $remote_addr, not spoofable).
+ */
+function clientIp(h: Headers): string | null {
+  const fwd = (h.get('x-forwarded-for') || '').split(',').map((x) => x.trim())
+  const last = fwd[fwd.length - 1]
+  if (last) return last
+  return h.get('x-real-ip')
 }
 
 // ── API Key path ──────────────────────────────────────────────
@@ -99,7 +115,10 @@ async function tryApiKey(rawKey: string): Promise<AuthIdentity | null> {
       role: true,
     },
   })
-  if (!user || user.status !== 'active') return null
+  // Status policy aligned with the session path: only 'suspended' is
+  // denied here. 'restricted' accounts keep read access; write operations
+  // are gated by requireWrite() for BOTH auth methods.
+  if (!user || user.status === 'suspended') return null
 
   // Fire-and-forget lastUsedAt update
   void prisma.apiKey

@@ -156,7 +156,7 @@ export default function AdminUsersPage() {
 
       {/* User list */}
       {loading ? (
-        <p className="py-8 text-center text-ink-muted">Loading…</p>
+        <p className="py-8 text-center text-ink-muted">{t.common.loadingEllipsis}</p>
       ) : users.length === 0 ? (
         <p className="py-8 text-center text-ink-muted">
           {searchQuery || statusFilter  ? t.admin.noUsersFound : t.admin.searchHint }

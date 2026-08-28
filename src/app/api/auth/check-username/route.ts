@@ -14,6 +14,8 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { sanitizeUsername } from '@/lib/utils'
+import { resolveIdentity } from '@/lib/api-auth'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 const RESERVED = new Set([
   'admin', 'api', 'auth', 'cas', 'compose', 'explore', 'login', 'logout',
@@ -22,6 +24,12 @@ const RESERVED = new Set([
 ])
 
 export async function GET(request: NextRequest) {
+  // Rate limit BEFORE touching the DB — this is an anonymous-reachable
+  // endpoint whose only job is username enumeration checks.
+  const identity = await resolveIdentity()
+  const limited = checkRateLimit(identity, 'anon')
+  if (limited) return limited
+
   const raw = request.nextUrl.searchParams.get('username') ?? ''
   const clean = sanitizeUsername(raw)
 

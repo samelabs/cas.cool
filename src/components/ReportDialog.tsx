@@ -1,9 +1,10 @@
 'use client'
 
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
 import { useToast } from '@/components/ui/Toast'
 import { t } from '@/lib/i18n'
 import { post } from '@/lib/api-client'
+import { useFocusTrap } from '@/lib/useFocusTrap'
 
 /**
  * Shared report dialog — used for both POST and USER reports.
@@ -45,52 +46,10 @@ export function ReportDialog({
   const [reason, setReason] = useState('')
   const [detail, setDetail] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const dialogRef = useRef<HTMLDivElement>(null)
-  const previouslyFocused = useRef<HTMLElement | null>(null)
 
-  // Close on Escape key + lock body scroll while open + focus management.
-  useEffect(() => {
-    if (!open) return
-    // Save the element that had focus before opening (restore on close).
-    previouslyFocused.current = document.activeElement as HTMLElement
-
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return }
-      // Focus trap: keep Tab/Shift+Tab within the dialog.
-      if (e.key === 'Tab' && dialogRef.current) {
-        const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), textarea, input, [tabindex]:not([tabindex="-1"])',
-        )
-        if (focusable.length === 0) return
-        const first = focusable[0]
-        const last = focusable[focusable.length - 1]
-        if (e.shiftKey && document.activeElement === first) {
-          e.preventDefault()
-          last.focus()
-        } else if (!e.shiftKey && document.activeElement === last) {
-          e.preventDefault()
-          first.focus()
-        }
-      }
-    }
-    document.addEventListener('keydown', handler)
-    document.body.style.overflow = 'hidden'
-
-    // Move focus into the dialog when it opens.
-    requestAnimationFrame(() => {
-      const focusable = dialogRef.current?.querySelector<HTMLElement>(
-        'button:not([disabled]), textarea, input',
-      )
-      focusable?.focus()
-    })
-
-    return () => {
-      document.removeEventListener('keydown', handler)
-      document.body.style.overflow = ''
-      // Restore focus to the trigger element.
-      previouslyFocused.current?.focus()
-    }
-  }, [open, onClose])
+  // Shared focus-trap/scroll-lock/Escape standard (see useFocusTrap) —
+  // the same hook used by ImageModal and ShareOverlay.
+  const trapRef = useFocusTrap(open, onClose)
 
   if (!open || !target) return null
 
@@ -124,7 +83,7 @@ export function ReportDialog({
       onClick={onClose}
     >
       <div
-        ref={dialogRef}
+        ref={trapRef}
         className="w-full max-w-md rounded-2xl bg-surface shadow-2xl"
         onClick={(e) => e.stopPropagation()}
         role="dialog"

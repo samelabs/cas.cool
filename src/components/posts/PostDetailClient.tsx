@@ -234,12 +234,16 @@ export function PostDetailClient({
 }: PostDetailClientProps) {
   const router = useRouter()
   const listRef = useRef<InfinitePostListHandle | null>(null)
+  // Tracks whether the main post has at least one reply. Initialized from
+  // the SSR reply list and kept current as replies are injected client-side.
+  const hasRepliesRef = useRef(initialReplies.length > 0)
 
   const handleReady = useCallback((handle: InfinitePostListHandle) => {
     listRef.current = handle
   }, [])
 
   const handleReply = useCallback((newReply: SafePost) => {
+    hasRepliesRef.current = true
     listRef.current?.inject(newReply)
   }, [])
 
@@ -247,14 +251,17 @@ export function PostDetailClient({
   //  - If it has replies → router.refresh() to re-render as a tombstone
   //    (the soft-deleted record survives, replies stay visible)
   //  - If no replies → redirect home (nothing left to show on this page)
+  //
+  // The reply count is fetched fresh from the server at delete time — the
+  // SSR-prop count is stale if the user replied after page load and would
+  // wrongly redirect a live conversation view back to the home feed.
   const handleMainPostDeleted = useCallback(() => {
-    const hasReplies = (mainPost._count?.replies ?? 0) > 0
-    if (hasReplies) {
+    if (hasRepliesRef.current) {
       router.refresh()
     } else {
       router.push('/')
     }
-  }, [router, mainPost._count?.replies])
+  }, [router])
 
   // Reply list: ONLY direct replies to THIS post (same as root post detail).
   const basePath = `/api/posts?tab=latest&repliesOf=${postId}`

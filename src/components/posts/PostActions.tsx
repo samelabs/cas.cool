@@ -69,7 +69,12 @@ function ActionButton({
     </>
   )
 
-  const baseClass = cn('group flex items-center gap-1', loading && 'opacity-60 pointer-events-none')
+  // ::before extends the hit area vertically (36→48px; mobile minimum 44)
+  // without changing the visual row height.
+  const baseClass = cn(
+    "group relative flex items-center gap-1 before:absolute before:-top-1.5 before:-bottom-1.5 before:left-0 before:right-0 before:content-[\"\"]",
+    loading && 'opacity-60 pointer-events-none',
+  )
 
   if (href) {
     return <Link href={href} aria-label={label} className={baseClass}>{content}</Link>

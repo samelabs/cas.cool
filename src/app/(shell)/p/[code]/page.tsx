@@ -6,6 +6,7 @@ import { PostDetailClient } from '@/components/posts/PostDetailClient'
 import ViewIncrement from '@/components/posts/ViewIncrement'
 import type { Metadata } from 'next'
 import { getPostByShortCode, getPostChain, getPostReplies, checkFollow } from '@/lib/services/post.service'
+import { jsonLdScript } from '@/lib/utils'
 
 export async function generateMetadata({
   params,
@@ -111,7 +112,7 @@ export default async function ShortPostPage({
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }}
       />
       <PageHeader title={t.common.post} backHref="/" />
 

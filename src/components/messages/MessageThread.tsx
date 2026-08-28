@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/Toast'
 import { t } from '@/lib/i18n'
 import type { SafeUser } from '@/lib/types'
 
-import { post } from '@/lib/api-client'
+import { post, get } from '@/lib/api-client'
 
 export interface ChatMessage {
   id: string
@@ -47,6 +47,53 @@ export default function MessageThread({
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
 
+  // ── Incoming-message polling ──
+  // Fetch messages newer than the newest one we already have, every 15s
+  // while the tab is visible. Also runs once right after a successful
+  // send so the server copy replaces the optimistic tmp-* bubble.
+  const latestTsRef = useRef<string>(
+    initialMessages.length > 0
+      ? new Date(initialMessages[initialMessages.length - 1].createdAt).toISOString()
+      : new Date(0).toISOString(),
+  )
+  const pollNow = useCallback(async () => {
+    try {
+      const result = await get<{ messages: ChatMessage[] }>(
+        `/api/messages/${conversationId}?since=${encodeURIComponent(latestTsRef.current)}`,
+      )
+      if (!result.ok || !result.data || result.data.messages.length === 0) return
+      const incoming = result.data.messages
+      setMessages((prev) => {
+        // Server ids we already show (tmp-* optimistic bubbles excluded —
+        // they get superseded below by the real server message).
+        const known = new Set(prev.filter((m) => !m.id.startsWith('tmp-')).map((m) => m.id))
+        const fresh = incoming.filter((m) => !known.has(m.id))
+        if (fresh.length === 0) return prev
+        // Drop optimistic bubbles that the fetched range now covers.
+        const newestFresh = new Date(fresh[fresh.length - 1].createdAt).getTime()
+        const kept = prev.filter(
+          (m) => !m.id.startsWith('tmp-') || new Date(m.createdAt).getTime() > newestFresh,
+        )
+        return [...kept, ...fresh]
+      })
+      latestTsRef.current = new Date(
+        incoming[incoming.length - 1].createdAt,
+      ).toISOString()
+    } catch {
+      // Network hiccup — next tick retries.
+    }
+  }, [conversationId])
+  useEffect(() => {
+    // Initial sync right after mount catches messages sent between SSR
+    // render and hydration (the 15s wait below would miss them).
+    void pollNow()
+    const timer = setInterval(() => {
+      if (document.visibilityState !== 'visible') return
+      void pollNow()
+    }, 15_000)
+    return () => clearInterval(timer)
+  }, [pollNow])
+
   // Cache today's date string once to avoid creating new Date() per message per render.
   const todayStr = new Date().toLocaleDateString()
 
@@ -77,9 +124,9 @@ export default function MessageThread({
     try {
       const result = await post('/api/messages/' + conversationId + '/send', { content: text })
       if (!result.ok) throw new Error()
-      // sendMessage returns { ok: true } — no message id returned, so the
-      // optimistic message stays with its temp id. The real message will appear
-      // on next server revalidation of the conversation.
+      // sendMessage returns { ok: true } — no message id returned. Pull the
+      // server copy immediately; pollNow's merge replaces the tmp-* bubble.
+      void pollNow()
     } catch {
       // Remove the optimistic message entirely on failure
       setMessages((m) => m.filter((msg) => msg.id !== optimistic.id))
@@ -87,7 +134,7 @@ export default function MessageThread({
     } finally {
       setSending(false)
     }
-  }, [draft, sending, conversationId, currentUserId, showToast])
+  }, [draft, sending, conversationId, currentUserId, showToast, pollNow])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -106,7 +153,7 @@ export default function MessageThread({
               </p>
               <p className="text-sm text-ink-muted">@{otherUser.username}</p>
               <p className="mt-2 text-sm text-ink-muted">
-                Say hello to start the conversation.
+                {t.messages.sayHelloToStart}
               </p>
             </div>
           </div>

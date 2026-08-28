@@ -48,7 +48,9 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
+  // API routes never need the page-auth redirect — their auth/rate-limiting
+  // is handled inside the route handlers via api-auth.ts / rate-limit.ts.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\..*).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/|.*\\..*).*)',
   ],
 }

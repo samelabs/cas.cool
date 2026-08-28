@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { XIcon, ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
 import { cn } from '@/lib/cn'
 import { t } from '@/lib/i18n'
+import { useFocusTrap } from '@/lib/useFocusTrap'
 
 export interface ImageModalProps {
   /** List of image URLs to view. */
@@ -32,6 +33,10 @@ export function ImageModal({ images, startIndex = 0, onClose }: ImageModalProps)
   )
   const touchStartX = useRef<number | null>(null)
 
+  // Shared focus-trap/scroll-lock/Escape standard (see useFocusTrap). Arrow
+  // keys are handled separately below; Escape is handled by the trap.
+  const trapRef = useFocusTrap(true, onClose)
+
   const count = images.length
   const hasPrev = index > 0
   const hasNext = index < count - 1
@@ -43,13 +48,10 @@ export function ImageModal({ images, startIndex = 0, onClose }: ImageModalProps)
     setIndex((i) => Math.min(count - 1, i + 1))
   }, [count])
 
-  // Keyboard navigation.
+  // Arrow-key navigation (Escape/Tab/focus are handled by useFocusTrap).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        onClose()
-      } else if (e.key === 'ArrowLeft') {
+      if (e.key === 'ArrowLeft') {
         e.preventDefault()
         goPrev()
       } else if (e.key === 'ArrowRight') {
@@ -59,16 +61,7 @@ export function ImageModal({ images, startIndex = 0, onClose }: ImageModalProps)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose, goPrev, goNext])
-
-  // Lock body scroll while the modal is mounted; restore on unmount.
-  useEffect(() => {
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [])
+  }, [goPrev, goNext])
 
   if (typeof document === 'undefined') return null
 
@@ -87,6 +80,7 @@ export function ImageModal({ images, startIndex = 0, onClose }: ImageModalProps)
 
   return createPortal(
     <div
+      ref={trapRef}
       role="dialog"
       aria-modal="true"
       aria-label={t.common.imageViewer}

@@ -30,6 +30,14 @@ const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads')
 export const MAX_RAW_BYTES = 10 * 1024 * 1024 // 10MB
 
 /**
+ * Tighter cap for GIFs. GIFs bypass sharp re-encoding (to preserve
+ * animation) and land on disk byte-for-byte, so a 10MB GIF is a 10MB
+ * permanent disk cost. 5MB keeps the disk-fill vector bounded while
+ * staying above any reasonable animated sticker/loop.
+ */
+export const MAX_GIF_BYTES = 5 * 1024 * 1024 // 5MB
+
+/**
  * Upload purpose presets — callers tag what the image is for so the pipeline
  * can pick the right max dimension / quality. This keeps a single code path
  * (one processAndStoreImage, one /api/upload) while ensuring avatars don't
@@ -109,8 +117,10 @@ export async function processAndStoreImage(
 
   await mkdir(UPLOAD_DIR, { recursive: true })
 
-  // Animated GIF: pass through untouched so animation survives.
+  // Animated GIF: pass through untouched so animation survives — but
+  // bounded by the tighter GIF-specific cap (see MAX_GIF_BYTES).
   if (magicKind === 'gif') {
+    if (buffer.length > MAX_GIF_BYTES) return null
     const filename = `${randomUUID()}.gif`
     await writeFile(path.join(UPLOAD_DIR, filename), buffer)
     return { url: `/uploads/${filename}`, filename, bytes: buffer.length, kind: 'gif' }

@@ -8,6 +8,7 @@
 import { NextRequest } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
+import { deleteUnreferencedUploads } from '@/lib/upload-cleanup'
 import { requireAuth } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { userSelect, serializeUser } from '@/lib/serialize'
@@ -46,11 +47,27 @@ export async function PATCH(request: NextRequest) {
     clean.website = (url.startsWith('https://') || url.startsWith('http://')) ? url : null
   }
 
+  // Old avatar/banner (fetched before the update overwrites them) for
+  // orphan cleanup below.
+  const prev = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: { avatar: true, banner: true },
+  })
+
   const updated = await prisma.user.update({
     where: { id: user.id },
     data: clean,
     select: { ...userSelect, email: true },
   })
+
+  // Best-effort cleanup: the replaced avatar/banner file may now be
+  // orphaned (only deleted if no row still references it).
+  const replaced: string[] = []
+  if (prev) {
+    if (clean.avatar !== undefined && prev.avatar && prev.avatar !== clean.avatar) replaced.push(prev.avatar)
+    if (clean.banner !== undefined && prev.banner && prev.banner !== clean.banner) replaced.push(prev.banner)
+  }
+  if (replaced.length > 0) await deleteUnreferencedUploads(replaced)
 
   return Response.json({ user: serializeUser(updated) })
 }

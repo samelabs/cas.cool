@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import { createPortal } from 'react-dom'
 import { useToast } from '@/components/ui/Toast'
 import { postUrl } from '@/lib/shortCode'
 import type { SafePost } from '@/lib/types'
 import { t } from '@/lib/i18n'
+import { useFocusTrap } from '@/lib/useFocusTrap'
 
 /**
  * Share button with social platform modal.
@@ -170,7 +171,10 @@ export function ShareButton({
     <button
       type="button"
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(true) }}
-      className="group flex items-center gap-1"
+      // ::before extends the hit area vertically (44px+ mobile minimum) —
+      // vertical only, matching ActionButton/PostMenu: horizontal -inset-2
+      // would overlap the neighbouring button's hit area.
+      className="group relative flex items-center gap-1 before:absolute before:-top-2 before:-bottom-2 before:left-0 before:right-0 before:content-['']"
       aria-label={t.postMenu.share}
     >
       <span className="flex h-9 w-9 items-center justify-center rounded-full transition-colors group-hover:bg-brand-tint group-hover:text-brand">
@@ -225,19 +229,14 @@ function ShareOverlay({
 }) {
   const showNativeShare = typeof navigator !== 'undefined' && !!navigator.share
 
-  useEffect(() => {
-    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    document.addEventListener('keydown', onEsc)
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onEsc)
-      document.body.style.overflow = prev
-    }
-  }, [onClose])
+  const trapRef = useFocusTrap(true, onClose)
 
   return (
     <div
+      ref={trapRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t.postMenu.share}
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-[2px] p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >

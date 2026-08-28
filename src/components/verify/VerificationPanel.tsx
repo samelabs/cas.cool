@@ -231,10 +231,7 @@ export default function VerificationPanel({ variant = 'initial', existingSubmiss
         {/* Privacy notice */}
         <div className="rounded-lg bg-canvas px-4 py-3">
           <p className="text-xs leading-relaxed text-ink-faint">
-            Any government-issued identification document from any country is accepted
-            (national identity card, passport, or driver&apos;s license).
-            Submitted documents are reviewed exclusively by platform administrators and
-            are not displayed publicly.
+            {t.verify.acceptedDocs}
           </p>
         </div>
 
@@ -244,7 +241,7 @@ export default function VerificationPanel({ variant = 'initial', existingSubmiss
             loading={submitting}
             disabled={!idName.trim() || !idNumber.trim() || !idFrontImage || !idBackImage}
           >
-            Submit verification request
+            {t.verify.submitRequest}
           </Button>
         </div>
       </form>

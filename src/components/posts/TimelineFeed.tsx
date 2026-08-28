@@ -170,6 +170,12 @@ function Tabs({
   )
 }
 
+/** createdAt arrives as a real Date through RSC props but as a string
+ *  through every API fetch (JSON round-trip). Normalize at the boundary
+ *  before storing/comparing — mixed types silently broke the watermark
+ *  (string.toISOString throws; string > Date is always false). */
+const asDate = (d: Date | string): Date => (d instanceof Date ? d : new Date(d))
+
 // ─── Main component ─────────────────────────────────────────
 
 function TimelineFeedInner({
@@ -186,7 +192,7 @@ function TimelineFeedInner({
   // when: (a) initial mount from SSR data, (b) user creates a post,
   // (c) banner click / pull-to-refresh fetches new content.
   const newestSeenRef = useRef<Date | null>(
-    initialPosts.length > 0 ? initialPosts[0].createdAt : null,
+    initialPosts.length > 0 ? asDate(initialPosts[0].createdAt) : null,
   )
 
   // Keep the URL in sync (shareable / refresh-stable) WITHOUT triggering a
@@ -224,6 +230,22 @@ function TimelineFeedInner({
     return data.flatMap((p) => (p ? p.posts : []))
   }, [data, initialPosts])
 
+  // ─── Watermark sync with the visible feed top ───
+  // SWR revalidation (mount / focus / back-navigation) silently swaps newer
+  // posts into the first page while newestSeenRef may still hold its stale
+  // SSR seed — the banner then re-appears (and its click becomes a no-op)
+  // for posts already visible in the list. Whatever sits at the top of the
+  // rendered feed counts as seen: advance the watermark with it.
+  useEffect(() => {
+    const first = data?.[0]?.posts?.[0]
+    if (!first) return
+    const top = asDate(first.createdAt)
+    if (!newestSeenRef.current || top > newestSeenRef.current) {
+      newestSeenRef.current = top
+      setNewPostsCount(0)
+    }
+  }, [data])
+
   const lastPage = data?.[data.length - 1]
   const MAX_PAGES = 50
   const reachingEnd =
@@ -259,7 +281,7 @@ function TimelineFeedInner({
           },
           { revalidate: false },
         )
-        newestSeenRef.current = fetched[0].createdAt
+        newestSeenRef.current = asDate(fetched[0].createdAt)
       }
 
       setNewPostsCount(0)
@@ -332,8 +354,9 @@ function TimelineFeedInner({
         { revalidate: false },
       )
       // Advance watermark so the banner doesn't count the user's own post
-      if (!newestSeenRef.current || post.createdAt > newestSeenRef.current) {
-        newestSeenRef.current = post.createdAt
+      const createdAt = asDate(post.createdAt)
+      if (!newestSeenRef.current || createdAt > newestSeenRef.current) {
+        newestSeenRef.current = createdAt
       }
       window.scrollTo({ top: 0, behavior: 'auto' })
     },

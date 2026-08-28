@@ -46,6 +46,21 @@ export function sanitizeUsername(username: string): string {
 }
 
 /**
+ * Serialize a JSON-LD object for safe embedding in a <script> tag.
+ *
+ * JSON.stringify does NOT escape "<" (nor U+2028/U+2029), so content like
+ * "</script><script>alert(1)</script>" inside a post would break out of the
+ * script tag — a stored XSS against every visitor of the page. Escaping as
+ * \u003c keeps the JSON semantically identical for parsers.
+ */
+export function jsonLdScript(obj: unknown): string {
+  return JSON.stringify(obj)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029')
+}
+
+/**
  * Mention extraction — finds @username patterns in text.
  *
  * Rules:

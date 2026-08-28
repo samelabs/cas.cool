@@ -8,6 +8,7 @@ import { InfinitePostList } from '@/components/posts/InfinitePostList'
 import { FlaskIcon } from '@/components/icons'
 import { ChemicalInfo } from '@/components/chem/ChemicalInfo'
 import { getTimelinePage } from '@/lib/services/post.service'
+import { jsonLdScript } from '@/lib/utils'
 import type { Metadata } from 'next'
 
 import { SITE_URL } from '@/lib/site'
@@ -105,7 +106,7 @@ export default async function CASPage({
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }}
       />
       <PageHeader title={`CAS ${decoded}`} />
 

@@ -11,6 +11,8 @@
 
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
+import { revalidateTrending } from '@/lib/services/user.service'
+import { deleteUnreferencedUploads } from '@/lib/upload-cleanup'
 import { postInclude, serializePost } from '@/lib/serialize'
 import { requireAuth, requireWrite, resolveIdentity } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
@@ -29,7 +31,7 @@ function jsonError(status: number, code: string, message: string) {
 async function findPostByCode(code: string) {
   return prisma.post.findFirst({
     where: { shortCode: code, deletedAt: null },
-    select: { id: true, authorId: true, createdAt: true, parentId: true, chemicals: { select: { casNumber: true } } },
+    select: { id: true, authorId: true, createdAt: true, parentId: true, images: true, chemicals: { select: { casNumber: true } } },
   })
 }
 
@@ -89,6 +91,10 @@ export async function PATCH(
   const limit = maxPostLength(user)
   if (content.length > limit) return jsonError(400, 'bad_request', `Content too long (max ${limit} characters).`)
 
+  // Images removed by this edit — collected BEFORE the update wipes the
+  // old array, cleaned up after the transaction commits.
+  const removedImages = post.images.filter((u) => !keepImages.includes(u))
+
   const updated = await prisma.$transaction(async (tx) => {
     const result = await tx.post.update({
       where: { id: post.id },
@@ -121,6 +127,10 @@ export async function PATCH(
 
     return result
   })
+
+  // Best-effort cleanup of images this edit removed (only files that no
+  // other row still references).
+  await deleteUnreferencedUploads(removedImages)
 
   return Response.json(serializePost(updated))
 }
@@ -155,6 +165,12 @@ export async function DELETE(
       await tx.chemical.update({ where: { casNumber: chem.casNumber }, data: { postCount: { decrement: 1 } } })
     }
   })
+
+  // Post-delete side effects (outside the transaction, best-effort):
+  //  - trending counts changed — drop the cached sidebar list
+  //  - the deleted post's images may now be orphaned files
+  revalidateTrending()
+  await deleteUnreferencedUploads(post.images)
 
   return Response.json({ success: true })
 }

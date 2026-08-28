@@ -5,6 +5,7 @@
 
 import { cache } from 'react'
 import { prisma } from '@/lib/db'
+import { unstable_cache, revalidateTag } from 'next/cache'
 import { userSelect, serializeUser, serializeUsers } from '@/lib/serialize'
 import type { SafeUser } from '@/lib/types'
 
@@ -47,7 +48,13 @@ export interface TrendingChemical {
   postCount: number
 }
 
-export async function getTrendingChemicals(limit: number = 5): Promise<TrendingChemical[]> {
+// Trending is global data shared by every visitor (independent of identity),
+// so it is cached at the data-cache level. Revalidated whenever a post is
+// created/deleted (see revalidateTag below) — plus the natural 5-minute TTL
+// keeps the sidebar cheap without making it stale for long.
+const TRENDING_TAG = 'trending-chemicals'
+
+const _getTrendingChemicals = async (limit: number): Promise<TrendingChemical[]> => {
   try {
     return await prisma.chemical.findMany({
       where: { postCount: { gt: 0 } },
@@ -58,6 +65,20 @@ export async function getTrendingChemicals(limit: number = 5): Promise<TrendingC
   } catch {
     return []
   }
+}
+
+export async function getTrendingChemicals(limit: number = 5): Promise<TrendingChemical[]> {
+  const cached = unstable_cache(
+    () => _getTrendingChemicals(limit),
+    ['trending-chemicals', String(limit)],
+    { tags: [TRENDING_TAG], revalidate: 300 },
+  )
+  return cached()
+}
+
+/** Invalidate the trending cache (called after post create/delete). */
+export function revalidateTrending() {
+  revalidateTag(TRENDING_TAG, 'max')
 }
 
 // ─── Follow Suggestions ───────────────────────────────────────

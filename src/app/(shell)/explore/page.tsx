@@ -81,7 +81,7 @@ export default async function ExplorePage({
         <section className="border-b border-line">
           <h2 className="flex items-center gap-2 px-4 py-3 text-lg font-bold text-ink">
             <TrendingIcon className="h-5 w-5 text-brand" />
-            Trending Chemicals
+            {t.explore.trendingChemicals}
           </h2>
           {trendingCas.length === 0 ? (
             <p className="px-4 pb-4 text-sm text-ink-muted">{t.explore.noTrending}</p>
@@ -93,7 +93,7 @@ export default async function ExplorePage({
                   href={`/cas/${c.casNumber}`}
                   className="border-b border-r border-line px-4 py-3 transition-colors hover:bg-canvas/80"
                 >
-                  <p className="text-xs text-ink-muted">#{i + 1} · Trending</p>
+                  <p className="text-xs text-ink-muted">{t.explore.trending(i + 1)}</p>
                   <p className="mt-0.5 font-mono text-sm font-semibold text-brand-ink">
                     CAS {c.casNumber}
                   </p>
@@ -136,7 +136,7 @@ export default async function ExplorePage({
       {searching && users.length > 0 && (
         <section className="border-b border-line">
           <h2 className="px-4 py-3 text-sm font-bold uppercase tracking-wide text-ink-faint">
-            People
+            {t.explore.people}
           </h2>
           {users.map((u) => (
             <ProfileCard key={u.id} user={u} />

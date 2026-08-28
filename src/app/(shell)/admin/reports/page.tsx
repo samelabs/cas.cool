@@ -181,7 +181,7 @@ export default function AdminReportsPage() {
       </div>
 
       {loading ? (
-        <p className="py-8 text-center text-ink-muted">Loading…</p>
+        <p className="py-8 text-center text-ink-muted">{t.common.loadingEllipsis}</p>
       ) : reports.length === 0 ? (
         <p className="py-8 text-center text-ink-muted">{t.admin.noReports}</p>
       ) : (
@@ -312,21 +312,21 @@ export default function AdminReportsPage() {
                       disabled={acting === r.id}
                       className="rounded-lg bg-danger/10 px-3 py-1.5 text-xs font-bold text-danger transition-colors hover:bg-danger/20 disabled:opacity-50"
                     >
-                      Suspend user
+                      {t.admin.actions.suspendUser}
                     </button>
                     <button
                       onClick={() => resolve(r.id, 'warn')}
                       disabled={acting === r.id}
                       className="rounded-lg border border-line-strong px-3 py-1.5 text-xs font-bold text-ink-muted transition-colors hover:text-ink disabled:opacity-50"
                     >
-                      Warn only
+                      {t.admin.actions.warnOnly}
                     </button>
                     <button
                       onClick={() => dismiss(r.id)}
                       disabled={acting === r.id}
                       className="ml-auto rounded-lg px-3 py-1.5 text-xs font-bold text-ink-faint transition-colors hover:bg-surface-hover disabled:opacity-50"
                     >
-                      Dismiss
+                      {t.admin.actions.dismiss}
                     </button>
                   </div>
                 )}

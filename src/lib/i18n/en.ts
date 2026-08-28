@@ -241,6 +241,7 @@ export const en = {
       likes: 'Likes',
     },
     notFound: 'User not found',
+    reportUser: 'Report user',
   },
 
   // ─── Messages ──────────────────────────────────────────
@@ -261,6 +262,8 @@ export const en = {
     replyPosted: 'Reply posted',
     failedToReply: 'Failed to reply',
     noConversations: 'No conversations yet',
+    startFromProfile: 'Start a conversation from someone\'s profile.',
+    sayHelloToStart: 'Say hello to start the conversation.',
   },
 
   // ─── Notifications ─────────────────────────────────────
@@ -398,6 +401,8 @@ export const en = {
     resubmitInfo: 'You may resubmit with corrected information.',
     uploadFrontSide: 'Click to upload front side',
     uploadBackSide: 'Click to upload back side',
+    acceptedDocs: 'Any government-issued identification document from any country is accepted (national identity card, passport, or driver\'s license). Submitted documents are reviewed exclusively by platform administrators and are not displayed publicly.',
+    submitRequest: 'Submit verification request',
   },
 
   // ─── Report ────────────────────────────────────────────
@@ -475,6 +480,7 @@ export const en = {
     verificationsLoadFailed: 'Failed to load',
     approved: 'Approved',
     rejected: 'Rejected',
+
     noSubmissions: 'No submissions',
     pendingTab: 'Pending',
     approvedTab: 'Approved',

@@ -27,11 +27,55 @@ export async function searchPostsFirstPage(
   currentUserId?: string | null,
   limit?: number,
 ): Promise<SearchFirstPage> {
+  return searchPostsPage(query, currentUserId, undefined, limit)
+}
+
+/**
+ * Cursor-paginated search page. The cursor format matches the timeline
+ * cursor ("createdAt|id" ISO string + cuid), consumed by /api/search.
+ */
+export async function searchPostsAfterCursor(
+  query: string,
+  currentUserId?: string | null,
+  cursor?: string,
+  limit?: number,
+): Promise<SearchFirstPage> {
+  return searchPostsPage(query, currentUserId, cursor, limit)
+}
+
+async function searchPostsPage(
+  query: string,
+  currentUserId?: string | null,
+  cursor?: string,
+  limit?: number,
+): Promise<SearchFirstPage> {
   const q = query.trim()
   if (q.length < 2) return { posts: [], nextCursor: null }
 
   const take = Math.min(Math.max(limit ?? FEED_PAGE_SIZE, 1), 50)
   const isCasLike = /[\d-]/.test(q) && q.replace(/[^0-9-]/g, '').length >= 3
+
+  // Cursor → (createdAt, id) keyset predicate. NULL for the first page.
+  let cursorDate: string | null = null
+  let cursorId: string | null = null
+  if (cursor) {
+    const idx = cursor.indexOf('|')
+    if (idx === -1) return { posts: [], nextCursor: null }
+    cursorDate = cursor.slice(0, idx)
+    cursorId = cursor.slice(idx + 1)
+    // Both halves are interpolated into the raw SQL below (not bind params),
+    // so BOTH are whitelisted, not just parsed:
+    //  - date: strict ISO-8601 UTC shape (what nextCursor emits via toISOString)
+    //  - id:   exact id shapes the DB holds (uuid / cuid / tid_N / pid_N
+    //          import rows; verified against all 785k rows, 0 misses)
+    // A quote in either half can never reach the string literal.
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/.test(cursorDate)) {
+      return { posts: [], nextCursor: null }
+    }
+    if (!/^(tid|pid)_[0-9]{1,20}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^c[a-z0-9]{20,30}$/.test(cursorId)) {
+      return { posts: [], nextCursor: null }
+    }
+  }
 
   // Two-step: UNION of content ILIKE + CAS join
   const branches: string[] = [`
@@ -39,6 +83,7 @@ export async function searchPostsFirstPage(
     FROM "Post" p
     WHERE p."parentId" IS NULL
       AND p.content ILIKE ${'$1'}
+      ${cursorDate ? `AND (p."createdAt", p.id) < ('${cursorDate}'::timestamptz, '${cursorId}')` : ''}
     ORDER BY p."createdAt" DESC, p.id DESC
     LIMIT ${take}
   `]
@@ -53,6 +98,7 @@ export async function searchPostsFirstPage(
       JOIN "Chemical" c ON c.id = cp."A"
       WHERE p."parentId" IS NULL
         AND c."casNumber" ILIKE ${'$2'}
+        ${cursorDate ? `AND (p."createdAt", p.id) < ('${cursorDate}'::timestamptz, '${cursorId}')` : ''}
       ORDER BY p."createdAt" DESC, p.id DESC
       LIMIT ${take}
     `)

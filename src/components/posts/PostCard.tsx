@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, memo } from 'react'
+import { useMemo, useState, memo } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { Avatar } from '@/components/ui/Avatar'
@@ -178,8 +178,15 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
   // Tokenize content once and cache — the 4-way regex split + React node
   // creation is the most expensive per-card operation, and content never
   // changes between renders for a given post object.
-  const renderedContent = post.content ? renderContent(post.content) : null
-  const renderedQuotedContent = post.quotedPost?.content ? renderContent(post.quotedPost.content) : null
+  const renderedContent = useMemo(
+    () => (post.content ? renderContent(post.content) : null),
+    [post.content],
+  )
+  const quotedContent = post.quotedPost?.content ?? null
+  const renderedQuotedContent = useMemo(
+    () => (quotedContent ? renderContent(quotedContent) : null),
+    [quotedContent],
+  )
 
   // ── Tombstone: soft-deleted post ──
   // The record survives (preserving thread structure) but content is cleared.

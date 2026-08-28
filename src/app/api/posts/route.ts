@@ -21,6 +21,7 @@ import { requireWrite, resolveIdentity } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { maxPostLength } from '@/lib/permissions'
 import { generateShortCode } from '@/lib/shortCode'
+import { revalidateTrending } from '@/lib/services/user.service'
 import { upsertNotification } from '@/lib/notification'
 import { getTimelinePage } from '@/lib/services/post.service'
 import { extractCASNumber, extractMentions } from '@/lib/utils'
@@ -159,6 +160,9 @@ export async function POST(request: NextRequest) {
     await tx.user.update({ where: { id: user.id }, data: { postCount: { increment: 1 } } })
     return created
   })
+
+  // Trending counts changed — drop the cached sidebar list.
+  revalidateTrending()
 
   // Notifications
   if (parentId) {
