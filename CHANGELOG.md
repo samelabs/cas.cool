@@ -4,12 +4,30 @@ All notable changes to CAS.cool are documented here.
 The open-source release is v1.0.0. The production site runs an iterative
 version (1.1.x) where x increments with each deploy.
 
+## [1.1.7] — 2026-08-29
+
+- Fix: mobile menu drawer collapsed to header height — the sticky header's
+  `backdrop-blur` makes it the containing block for fixed descendants, so the
+  in-header overlay anchored to 53px instead of the viewport. The drawer now
+  renders through a body-level portal; the layout spec (inset anchoring, no
+  viewport units) is unchanged.
+- i18n dictionary closed out: 160 dead keys removed (never wired — API routes
+  return error copy inline, so `errors.*` duplicates were dead weight);
+  3 hardcoded UI strings wired to existing keys (Who to Follow / Find more
+  people / Legal name). Verified zero missing / zero dead keys by AST scan.
+- README fix: `GET /api/posts` and `GET /api/posts/:code` are public
+  (anonymous-IP rate-limited), not Bearer-only — matches actual behavior.
+- Version bookkeeping: package.json resynced to the VERSION file (1.1.6 had
+  shipped with package.json still at 1.1.5).
+
 ## [1.1.6] — 2026-08-29
 
 - Layout system normalization: viewport-length units no longer pin any
   container height on mobile — chat pages anchor to the viewport
   (`fixed inset-0`) instead of measuring `100dvh`/`calc(100dvh - Npx)`;
   sidebars and the mobile drawer use boundary/anchored sizing
+  (the drawer regression this introduced — fixed in 1.1.7 — was the
+  overlay collapsing to header height on mobile)
 - Message polling endpoint (`GET /api/messages/[id]`) for live incoming
   messages without websockets; read-gated (restricted accounts keep
   inbox access), soft-delete state races closed with optimistic locking

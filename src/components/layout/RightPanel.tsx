@@ -85,7 +85,7 @@ export function RightPanel({ trending = [], suggestions = [] }: RightPanelProps)
       <section className="overflow-hidden rounded-2xl bg-surface-hover/50">
         <h2 className="flex items-center gap-2 px-4 py-3 text-lg font-bold text-ink">
           <SparklesIcon className="h-5 w-5 text-info" />
-          Who to Follow
+          {t.explore.whoToFollow}
         </h2>
         {suggestions.length > 0 ? (
           <div className="flex flex-col">
@@ -101,7 +101,7 @@ export function RightPanel({ trending = [], suggestions = [] }: RightPanelProps)
           href="/explore"
           className="block border-t border-line px-4 py-3 text-sm text-brand hover:bg-surface-hover"
         >
-          Find more people
+          {t.explore.findMorePeople}
         </Link>
       </section>
 

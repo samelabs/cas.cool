@@ -99,7 +99,7 @@ export default function VerificationPanel({ variant = 'initial', existingSubmiss
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className={labelCls}>
-              Full legal name <span className="text-danger">*</span>
+              {t.verify.legalName} <span className="text-danger">*</span>
             </label>
             <input
               className={inputCls}
