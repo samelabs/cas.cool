@@ -345,7 +345,7 @@ export const en = {
     currentPassword: 'Current password',
     newPassword: 'New password',
     changePassword: 'Change password',
-    passwordChanged: 'Password changed.',
+    passwordChanged: 'Password changed. You have been signed out on other devices.',
     passwordShort: 'New password must be at least 8 characters.',
     passwordTooLong: 'Password must be at most 128 characters.',
     passwordChangeFailed: 'Could not change password.',

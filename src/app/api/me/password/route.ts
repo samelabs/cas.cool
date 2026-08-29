@@ -10,6 +10,7 @@ import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
 import { requireAuth } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
+import { createSession, setSessionCookie } from '@/lib/auth'
 
 function jsonError(status: number, code: string, message: string) {
   return Response.json({ error: { code, message } }, { status })
@@ -42,8 +43,13 @@ export async function POST(request: NextRequest) {
   const newHash = await bcrypt.hash(newPassword, 10)
   await prisma.user.update({ where: { id: user.id }, data: { passwordHash: newHash } })
 
-  // Invalidate all sessions
+  // Invalidate all sessions, then re-issue one for the current device.
+  // The caller just proved knowledge of the current password (equivalent
+  // to a fresh login), so keeping this device signed in is safe — other
+  // devices stay logged out.
   await prisma.session.deleteMany({ where: { userId: user.id } }).catch(() => {})
+  const token = await createSession(user.id)
+  await setSessionCookie(token)
 
   return Response.json({ ok: true })
 }
