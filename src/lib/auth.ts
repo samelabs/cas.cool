@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from 'jose'
+import { randomUUID } from 'node:crypto'
 import { cookies } from 'next/headers'
 import { cache } from 'react'
 import { prisma } from './db'
@@ -30,6 +31,10 @@ export async function createSession(userId: string): Promise<string> {
     .setProtectedHeader({ alg: 'HS256' })
     .setExpirationTime(Math.floor(expiresAt.getTime() / 1000))
     .setIssuedAt()
+    // Unique per issuance — without this, two sessions signed for the same
+    // user within the same second produce identical tokens and the DB insert
+    // below dies on the Session.token unique constraint (P2002 → login 500).
+    .setJti(randomUUID())
     .sign(getSecret())
 
   // Store session in DB
