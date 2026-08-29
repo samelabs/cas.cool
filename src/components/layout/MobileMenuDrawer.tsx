@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Avatar } from '@/components/ui/Avatar'
@@ -98,9 +99,15 @@ export function MobileMenuDrawer({
         />
       </button>
 
-      {/* Overlay + drawer */}
-      {open && (
-        <div className="fixed inset-0 z-[60] md:hidden">
+      {/* Overlay + drawer.
+       * Portal to body: the in-page header carries backdrop-blur-md, which
+       * makes it the containing block for fixed descendants — anchoring the
+       * overlay to the 53px header instead of the viewport (drawer collapsed).
+       * Rendering at body level keeps `fixed inset-0` viewport-anchored. */}
+      {open &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 z-[60] md:hidden">
           {/* Backdrop — click to close */}
           <div
             className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -197,8 +204,9 @@ export function MobileMenuDrawer({
               </button>
             </div>
           </nav>
-        </div>
-      )}
+          </div>,
+          document.body
+        )}
     </>
   )
 }
