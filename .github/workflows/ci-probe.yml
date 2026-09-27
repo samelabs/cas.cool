@@ -1,0 +1,9 @@
+name: ci-probe
+on:
+  push:
+    branches: [ci-probe]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo actions-ok
