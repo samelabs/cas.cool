@@ -1525,6 +1525,8 @@ describe('report resolve side-effect outbox (fault injection)', () => {
     // a real, deterministic filesystem fault with no test hook in app code.
     const fs = await import('node:fs')
     const uploadsDir = await import('node:path').then((m) => m.join(process.cwd(), 'public', 'uploads'))
+    // Upload storage is gitignored and need not exist on a fresh checkout.
+    fs.mkdirSync(uploadsDir, { recursive: true })
     fs.mkdirSync(`${uploadsDir}/${tag}.webp`)
 
     const res = await api(`/api/admin/reports/${reportId}/resolve`, {

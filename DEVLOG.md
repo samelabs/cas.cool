@@ -1109,3 +1109,13 @@ would turn back-navigation state into a mobile memory liability.
 **Pitfalls / Notes:**
 - The inspected production binary predates the access-column baseline and reads `scopes`; applying the pending migration set while it serves would likewise break key authentication. Production schema changes and process replacement therefore share an explicit maintenance window.
 - This entry records completed read-only preflight and the release plan; execution outcomes are recorded separately after deployment. Production credentials, database snapshots and uploaded files remain outside Git.
+
+### 2026-10-29 — Fresh-Checkout Upload Fault Fixture
+
+**Context:** The release CI reached all build gates but the filesystem fault-injection test failed before exercising the outbox because a fresh checkout has no gitignored `public/uploads` directory. Existing local upload storage had hidden that test precondition.
+
+**Changes:**
+- The API contract fixture creates its upload parent directory recursively before constructing the directory-shaped image fault. The EISDIR/EPERM failure and compensation assertions remain unchanged.
+
+**Pitfalls / Notes:**
+- Tests must create their own filesystem prerequisites; production uploads are neither committed nor required as test setup. This changes only the fixture, not application behavior or migrations.
