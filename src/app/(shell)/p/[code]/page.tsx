@@ -7,6 +7,7 @@ import ViewIncrement from '@/components/posts/ViewIncrement'
 import type { Metadata } from 'next'
 import { getPostByShortCode, getPostChain, getPostReplies, checkFollow } from '@/lib/services/post.service'
 import { jsonLdScript } from '@/lib/utils'
+import { getSiteConfig } from '@/lib/site'
 
 export async function generateMetadata({
   params,
@@ -15,10 +16,11 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { code } = await params
   const post = await getPostByShortCode(code)
+  const site = await getSiteConfig()
   if (!post) return { title: t.seo.postNotFound }
-  // Soft-deleted post: tombstone page renders "deleted" content.
-  // No noindex — Google indexes the tombstone naturally; no need to
-  // send an explicit exclusion signal that triggers Search Console alerts.
+  // Soft-deleted post: tombstone page renders "deleted" notice with HTTP 200.
+  // 200 tombstone preserves reply chain stability, conversation context, and client
+  // API contracts without breaking linked UI trees or causing churn.
   if (post.deletedAt) {
     return { title: t.postCard.deleted }
   }
@@ -27,16 +29,20 @@ export async function generateMetadata({
   const chem = post.chemicals[0]
   const title = chem
     ? t.seo.postWithCas(author, chem.casNumber)
-    : t.seo.postByAuthor(author)
+    : `${author} on ${site.name}`
 
   return {
     title,
     description: preview,
+    alternates: {
+      canonical: `${site.origin}/p/${code}`,
+    },
     openGraph: {
       title,
       description: preview,
+      url: `${site.origin}/p/${code}`,
       type: 'article',
-      siteName: t.seo.siteName,
+      siteName: site.name,
       ...(post.images?.[0] ? { images: [{ url: post.images[0] }] } : {}),
     },
     twitter: {
@@ -69,6 +75,7 @@ export default async function ShortPostPage({
   params: Promise<{ code: string }>
 }) {
   const { code } = await params
+  const site = await getSiteConfig()
   const me = await getCurrentUser()
   const isLoggedIn = !!me
 
@@ -80,9 +87,10 @@ export default async function ShortPostPage({
   // Build the ancestor chain for replies (root → ... → parent of current).
   // Two-phase fetch: first lightweight id+parentId for chain walk, then
   // hydrate only the actual ancestors (typically 1-10 posts, not all replies).
-  const chainPosts = post.parentId
+  const chainResult = post.parentId
     ? await getPostChain(post.id, post.conversationId || post.parentId, me?.id)
-    : []
+    : null
+  const chainPosts = chainResult ? chainResult.ancestors : []
 
   // Guest: 5 replies, no cursor (disables infinite scroll).
   // Logged-in: 20 replies + cursor (full pagination).
@@ -93,33 +101,41 @@ export default async function ShortPostPage({
   const authorFollowed =
     me && me.id !== post.authorId ? await checkFollow(me.id, post.authorId) : false
 
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'SocialMediaPosting',
-    headline: post.content.slice(0, 100),
-    author: {
-      '@type': 'Person',
-      name: post.author.displayName || post.author.username,
-      url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://cas.cool'}/${post.author.username}`,
-    },
-    url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://cas.cool'}/p/${code}`,
-    datePublished: post.createdAt,
-    ...(post.images?.[0] ? { image: post.images[0] } : {}),
-    ...(post.chemicals?.[0] ? { about: { '@type': 'ChemicalSubstance', identifier: `CAS ${post.chemicals[0].casNumber}` } } : {}),
-  };
+  const jsonLd = post.deletedAt
+    ? null
+    : {
+        '@context': 'https://schema.org',
+        '@type': 'SocialMediaPosting',
+        headline: post.content.slice(0, 100),
+        author: {
+          '@type': 'Person',
+          name: post.author.displayName || post.author.username,
+          url: `${site.origin}/u/${post.author.username}`,
+        },
+        url: `${site.origin}/p/${code}`,
+        datePublished: post.createdAt,
+        ...(post.images?.[0] ? { image: post.images[0] } : {}),
+        ...(post.chemicals?.[0]
+          ? { about: { '@type': 'ChemicalSubstance', identifier: `CAS ${post.chemicals[0].casNumber}` } }
+          : {}),
+      }
 
   return (
     <>
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }}
-      />
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: jsonLdScript(jsonLd) }}
+        />
+      )}
       <PageHeader title={t.common.post} backHref="/" />
 
       <PostDetailClient
         postId={post.id}
         mainPost={main}
         chainPosts={chainPosts}
+        initialHasMoreAncestors={chainResult?.hasMoreAncestors ?? false}
+        initialAncestorCursor={chainResult?.nextAncestorCursor ?? null}
         initialReplies={replyFeed}
         initialReplyCursor={isLoggedIn ? replyResult.nextCursor : null}
         authorFollowed={authorFollowed}

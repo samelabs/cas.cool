@@ -7,6 +7,7 @@ import { postUrl } from '@/lib/shortCode'
 import type { SafePost } from '@/lib/types'
 import { t } from '@/lib/i18n'
 import { useFocusTrap } from '@/lib/useFocusTrap'
+import { useSite } from '@/components/Providers'
 
 /**
  * Share button with social platform modal.
@@ -20,7 +21,6 @@ import { useFocusTrap } from '@/lib/useFocusTrap'
  * PostActions bar, near the viewport edge on mobile.
  */
 
-import { SITE_URL } from '@/lib/site'
 
 interface ShareTarget {
   key: string
@@ -134,14 +134,13 @@ export function ShareButton({
   variant?: 'icon' | 'action'
 }) {
   const { showToast } = useToast()
+  const site = useSite()
   const [open, setOpen] = useState(false)
 
-  const fullUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}${postUrl(post)}`
-    : `${SITE_URL}${postUrl(post)}`
+  const fullUrl = `${site.origin}${postUrl(post)}`
   const shareText = post.content
     ? post.content.slice(0, 80)
-    : t.seo.postByAuthor(post.author.displayName || post.author.username)
+    : `${post.author.displayName || post.author.username} on ${site.name}`
 
   const handlePlatformShare = useCallback((target: ShareTarget) => {
     window.open(target.href(fullUrl, shareText), '_blank', 'noopener,noreferrer,width=600,height=500')
@@ -152,13 +151,13 @@ export function ShareButton({
     setOpen(false)
     try {
       if (navigator.share) {
-        await navigator.share({ title: t.brand.name, text: shareText, url: fullUrl })
+        await navigator.share({ title: site.name, text: shareText, url: fullUrl })
       } else {
         await navigator.clipboard.writeText(fullUrl)
         showToast(t.postMenu.linkCopied, 'success', 2000)
       }
     } catch { /* user cancelled */ }
-  }, [fullUrl, shareText, showToast])
+  }, [fullUrl, shareText, showToast, site.name])
 
   const handleCopyLink = useCallback(() => {
     navigator.clipboard.writeText(fullUrl).then(

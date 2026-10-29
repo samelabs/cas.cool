@@ -5,16 +5,13 @@ import { getCurrentUser } from '@/lib/auth'
 import { TimelineFeed } from '@/components/posts/TimelineFeed'
 import { MobileMenuDrawer } from '@/components/layout/MobileMenuDrawer'
 import { FlaskIcon } from '@/components/icons'
-import { SITE_URL } from '@/lib/site'
+import { getSiteConfig } from '@/lib/site'
 import { getTimelinePage } from '@/lib/services/post.service'
+import { BrandWordmark } from '@/components/layout/BrandWordmark'
 
-export const metadata = {
-  title: t.seo.homeTitle,
-  description:
-    t.seo.homeDescription,
-  alternates: {
-    canonical: SITE_URL,
-  },
+export async function generateMetadata() {
+  const site = await getSiteConfig()
+  return { title: t.seo.homeTitle, description: site.description, alternates: { canonical: site.origin } }
 }
 
 export default async function HomePage({
@@ -31,6 +28,8 @@ export default async function HomePage({
   if (!me && tab === 'following') redirect('/login')
 
   // Fetch feed — getCurrentUser already returns counts via userSelect.
+  // Home feed always loads the initial page (page 0); deep cursors belong to
+  // client-driven infinite pagination, never SSR-injected into page 0 cache keys.
   const feedResult = await getTimelinePage({
     tab: tab === 'following' ? 'following' : 'latest',
     userId: me?.id,
@@ -64,7 +63,7 @@ export default async function HomePage({
             <Link href="/" className="flex items-center gap-1.5">
               <FlaskIcon className="h-5 w-5 text-brand" />
               <span className="text-lg font-extrabold tracking-tight text-brand">
-                CAS<span className="text-ink">.cool</span>
+                <BrandWordmark />
               </span>
             </Link>
           </div>

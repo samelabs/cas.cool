@@ -21,7 +21,6 @@ function NotifIcon({ type }: { type: SafeNotification['type'] }) {
     case 'FOLLOW': return <UserIcon className={cls} />
     case 'REPOST': return <RepostIcon className={cls} />
     case 'MESSAGE': return <MailIcon className={cls} />
-    case 'MENTION': return <FlaskIcon className={cls} />
     case 'REPORT_RESOLVED': return <ShieldIcon className={cls} />
     default: return <FlaskIcon className={cls} />
   }

@@ -2,8 +2,8 @@
  * Unified API authentication — single entry point for all route handlers.
  *
  * One identity resolution pass per request:
- *   Authorization: Bearer cas_...  → API Key path (agent / external caller)
- *   Cookie: cas_session            → Session path (browser / internal)
+ *   Authorization: Bearer <key>    → API Key path (agent / external caller)
+ *   Cookie: feed_session           → Session path (browser / internal)
  *
  * The resolved identity is the same shape regardless of path. Route handlers
  * never branch on auth method — they just check `.authenticated` and `.user`.
@@ -13,9 +13,9 @@ import { createHash } from 'node:crypto'
 import { cookies } from 'next/headers'
 import { jwtVerify } from 'jose'
 import { prisma } from './db'
-import { userSelect } from './serialize'
+import { SESSION_COOKIE } from './session-constants'
+import { hasCurrentVerification } from './permissions'
 
-const SESSION_COOKIE = 'cas_session'
 
 // ── Types ─────────────────────────────────────────────────────
 
@@ -56,19 +56,30 @@ function getSecret(): Uint8Array {
 /**
  * Resolve the caller identity from a Route Handler request.
  *
- * Tries API Key first (Authorization header), then Session (cookie).
+ * An explicit Authorization header is authoritative. Invalid credentials
+ * never fall back to a cookie session.
  * Never throws — returns { authenticated: false } on any failure.
  */
-export async function resolveIdentity(): Promise<AuthIdentity> {
-  // 1. Try API Key (Authorization: Bearer cas_...)
+export async function resolveIdentity(options: { allowSession?: boolean } = {}): Promise<AuthIdentity> {
+  // 1. Try API Key. The hash lookup is prefix-agnostic; SiteConfig controls
+  // the prefix used when generating new keys.
   const h = await headers()
   const header = h.get('authorization')
-  if (header?.startsWith('Bearer ')) {
-    const rawKey = header.slice(7)
-    if (rawKey.startsWith('cas_') && rawKey.length >= 20 && rawKey.length <= 128) {
-      const identity = await tryApiKey(rawKey)
-      if (identity) return identity
+  if (header !== null) {
+    if (header.startsWith('Bearer ')) {
+      const rawKey = header.slice(7)
+      if (rawKey.length >= 20 && rawKey.length <= 128) {
+        const identity = await tryApiKey(rawKey)
+        if (identity) return identity
+      }
     }
+    return { authenticated: false, user: null, method: 'anonymous', ip: clientIp(h) }
+  }
+
+  // Remote MCP is a bearer-only surface. Browser cookies must never confer
+  // agent write access or silently select a different account.
+  if (options.allowSession === false) {
+    return { authenticated: false, user: null, method: 'anonymous', ip: clientIp(h) }
   }
 
   // 2. Try Session (cookie)
@@ -186,18 +197,67 @@ export async function requireAuth(): Promise<
   return { ok: true, identity }
 }
 
-/** Require a user with write permission (active status). */
+export interface AccessError {
+  status: number
+  code: string
+  message: string
+}
+
+/** Shared REST/MCP write policy. Browser membership tiers remain unchanged;
+ *  programmatic writes additionally require current verification. */
+export function writeAccessError(identity: AuthIdentity, now = Date.now()): AccessError | null {
+  if (!identity.authenticated || !identity.user) {
+    return { status: 401, code: 'unauthorized', message: 'Authentication required.' }
+  }
+  if (identity.user.status === 'suspended') {
+    return { status: 401, code: 'unauthorized', message: 'Account is suspended.' }
+  }
+  if (identity.user.status !== 'active') {
+    return { status: 403, code: 'forbidden', message: 'Account is not active.' }
+  }
+  if (identity.method === 'apikey' && !hasCurrentVerification(identity.user, now)) {
+    return { status: 403, code: 'forbidden', message: 'Current verification is required for API and MCP writes.' }
+  }
+  return null
+}
+
+/** Check admin authorization. Admin writes still enforce active status and programmatic verification. */
+export function adminAccessError(
+  identity: AuthIdentity,
+  access: 'read' | 'write' = 'read',
+  now = Date.now(),
+): AccessError | null {
+  if (!identity.authenticated || !identity.user) {
+    return { status: 401, code: 'unauthorized', message: 'Authentication required.' }
+  }
+  if (identity.user.status === 'suspended') {
+    return { status: 401, code: 'unauthorized', message: 'Account is suspended.' }
+  }
+  if (identity.user.role !== 'admin') {
+    return { status: 403, code: 'forbidden', message: 'Admin access required.' }
+  }
+  if (access === 'write') {
+    return writeAccessError(identity, now)
+  }
+  if (identity.user.status !== 'active' && identity.user.status !== 'restricted') {
+    return { status: 403, code: 'forbidden', message: 'Account is not active.' }
+  }
+  return null
+}
+
+/** Require write access using the shared browser/programmatic policy. */
 export async function requireWrite(): Promise<
   { ok: true; identity: AuthIdentity } | { ok: false; response: Response }
 > {
   const result = await requireAuth()
   if (!result.ok) return result
-  if (result.identity.user!.status !== 'active') {
+  const error = writeAccessError(result.identity)
+  if (error) {
     return {
       ok: false,
       response: Response.json(
-        { error: { code: 'forbidden', message: 'Account is not active.' } },
-        { status: 403 },
+        { error: { code: error.code, message: error.message } },
+        { status: error.status },
       ),
     }
   }
@@ -205,21 +265,22 @@ export async function requireWrite(): Promise<
 }
 
 /** Require an admin user. */
-export async function requireAdmin(): Promise<
+export async function requireAdmin(access: 'read' | 'write' = 'read'): Promise<
   { ok: true; identity: AuthIdentity } | { ok: false; response: Response }
 > {
-  const result = await requireAuth()
-  if (!result.ok) return result
-  if (result.identity.user!.role !== 'admin') {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth
+  const error = adminAccessError(auth.identity, access)
+  if (error) {
     return {
       ok: false,
       response: Response.json(
-        { error: { code: 'forbidden', message: 'Admin access required.' } },
-        { status: 403 },
+        { error: { code: error.code, message: error.message } },
+        { status: error.status },
       ),
     }
   }
-  return result
+  return auth
 }
 
 // ── Inline headers() to avoid next/headers import duplication ─

@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/db'
 import { postInclude } from '@/lib/serialize'
+import { normalizePageSize } from '@/lib/pagination'
 
 /**
  * Unified post feed layer. Every post-list query in the app goes through
@@ -34,16 +35,11 @@ export type FeedPost = Prisma.PostGetPayload<{
   include: ReturnType<typeof postInclude>
 }>
 
-/** Resolve the set of user IDs that `followerId` is following.
- *  Returns `['__none__']` when the user follows no one, so Prisma's
- *  `authorId: { in: ids }` matches nothing instead of everything. */
-async function resolveFollowingIds(followerId: string): Promise<string[]> {
-  const following = await prisma.follow.findMany({
-    where: { followerId },
-    select: { followingId: true },
-  })
-  const ids = following.map((f) => f.followingId)
-  return ids.length ? ids : ['__none__']
+/** Keep following membership in SQL; avoid materializing every followed ID
+ *  into the Node process for each feed request. Follow has a unique index on
+ *  (followerId, followingId), so PostgreSQL can use an indexed EXISTS join. */
+function followedAuthors(followerId: string): Prisma.UserWhereInput {
+  return { followers: { some: { followerId } } }
 }
 
 export type FeedSort = 'latest' | 'recommended'
@@ -53,8 +49,6 @@ export interface FeedFilter {
   authorId?: string
   /** Posts by people this user follows (Following timeline). Resolved internally. */
   followingOf?: string
-  /** Posts with this CAS number (CAS pages). */
-  casNumber?: string
   /** Posts that are direct replies to this parent post ID (post detail page). */
   childOf?: string
   /** All posts in a conversation (flat — includes replies-to-replies).
@@ -70,8 +64,7 @@ export interface FeedFilter {
   bookmarkedBy?: string
 }
 
-export interface FeedQuery {
-  sort: FeedSort
+interface FeedQueryBase {
   filter?: FeedFilter
   /** ISO timestamp of the pagination boundary. */
   cursor?: string
@@ -87,6 +80,13 @@ export interface FeedQuery {
   dedupeByAuthor?: boolean
 }
 
+/** Product predicates are supported on chronological selection. The ranked
+ *  first page uses its own SQL and cannot silently ignore a predicate. */
+export type FeedQuery = FeedQueryBase & (
+  | { sort: 'latest'; postWhere?: Prisma.PostWhereInput }
+  | { sort: 'recommended'; postWhere?: never }
+)
+
 export interface FeedResult {
   posts: FeedPost[]
   nextCursor: string | null
@@ -95,7 +95,8 @@ export interface FeedResult {
 // ─── Public API ──────────────────────────────────────────────
 
 export async function getFeed(query: FeedQuery): Promise<FeedResult> {
-  const { sort, cursor, take, userId, filter = {}, order, dedupeByAuthor } = query
+  const { sort, cursor, userId, filter = {}, order, dedupeByAuthor, postWhere } = query
+  const take = normalizePageSize(query.take)
 
   // Recommended Phase 1: engagement-ranked first page (no cursor).
   if (sort === 'recommended' && !cursor) {
@@ -112,6 +113,7 @@ export async function getFeed(query: FeedQuery): Promise<FeedResult> {
     order: order ?? 'desc',
     filter: sort === 'recommended' ? { ...filter, parentId: 'root' } : filter,
     dedupeByAuthor,
+    postWhere,
   })
 }
 
@@ -188,10 +190,11 @@ interface ChronoParams {
   order: 'asc' | 'desc'
   filter: FeedFilter
   dedupeByAuthor?: boolean
+  postWhere?: Prisma.PostWhereInput
 }
 
 async function chronologicalPage(params: ChronoParams): Promise<FeedResult> {
-  const { userId, take, cursor, order, filter, dedupeByAuthor } = params
+  const { userId, take, cursor, order, filter, dedupeByAuthor, postWhere } = params
   const where: Prisma.PostWhereInput = { deletedAt: null }
 
   if (filter.parentId === 'root') where.parentId = null
@@ -204,39 +207,45 @@ async function chronologicalPage(params: ChronoParams): Promise<FeedResult> {
 
   // Author filter: followingOf (resolved async) takes priority over authorId.
   if (filter.followingOf) {
-    where.authorId = { in: await resolveFollowingIds(filter.followingOf) }
+    where.author = followedAuthors(filter.followingOf)
   } else if (filter.authorId) {
     where.authorId = filter.authorId
   }
 
-  if (filter.casNumber) where.chemicals = { some: { casNumber: filter.casNumber } }
   if (filter.hasImages) where.NOT = { images: { isEmpty: true } }
 
   // ── Author dedup (anti-spam): each author appears at most once per page.
-  //    Only applies to the generic latest feed (root posts, no author/CAS/
-  //    bookmark filter). Uses a windowed approach: fetch recent posts via
+  //    Only applies to the generic latest feed (root posts, no author or
+  //    product filter). Uses a windowed approach: fetch recent posts via
   //    the createdAt index, then deduplicate in application code.
-  if (dedupeByAuthor && !filter.bookmarkedBy && !filter.authorId && !filter.casNumber) {
+  if (dedupeByAuthor && !filter.bookmarkedBy && !filter.authorId && !postWhere) {
     return dedupedByAuthorPage({ userId, take, cursor, order, filter })
   }
 
-  // Bookmarks: join table ordering (Bookmark.createdAt), not Post.createdAt.
-  // Can't use a simple where-clause like the other filters.
+  // Bookmarks: join table ordering (Bookmark.createdAt, Bookmark.id) composite keyset.
   if (filter.bookmarkedBy) {
+    const bookmarkWhere: Prisma.BookmarkWhereInput = {
+      userId: filter.bookmarkedBy,
+      post: { deletedAt: null },
+    }
+    if (cursor) {
+      const [cursorDate, cursorId] = cursor.split('|')
+      const d = new Date(cursorDate)
+      bookmarkWhere.OR = [
+        { createdAt: { lt: d } },
+        { createdAt: d, id: { lt: cursorId } },
+      ]
+    }
     const bookmarks = await prisma.bookmark.findMany({
-      where: {
-        userId: filter.bookmarkedBy,
-        post: { deletedAt: null },
-        ...(cursor ? { createdAt: { lt: new Date(cursor) } } : {}),
-      },
-      orderBy: { createdAt: 'desc' },
+      where: bookmarkWhere,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take,
-      select: { createdAt: true, post: { include: postInclude(userId) } },
+      select: { id: true, createdAt: true, post: { include: postInclude(userId) } },
     })
     const posts = bookmarks.map((b) => b.post)
     const nextCursor =
       bookmarks.length > 0 && bookmarks.length >= take
-        ? bookmarks[bookmarks.length - 1].createdAt.toISOString()
+        ? `${bookmarks[bookmarks.length - 1].createdAt.toISOString()}|${bookmarks[bookmarks.length - 1].id}`
         : null
     return { posts, nextCursor }
   }
@@ -254,6 +263,8 @@ async function chronologicalPage(params: ChronoParams): Promise<FeedResult> {
         ? [{ createdAt: { lt: d } }, { createdAt: d, id: { lt: cursorId } }]
         : [{ createdAt: { gt: d } }, { createdAt: d, id: { gt: cursorId } }]
   }
+
+  if (postWhere) where.AND = [postWhere]
 
   // For reply queries (profile Replies tab + post-detail conversation),
   // include the parent post's author username so PostCard can show
@@ -301,7 +312,7 @@ async function dedupedByAuthorPage(params: {
 
   // Following filter
   if (filter.followingOf) {
-    where.authorId = { in: await resolveFollowingIds(filter.followingOf) }
+    where.author = followedAuthors(filter.followingOf)
   }
 
   // Cursor pagination
@@ -314,39 +325,72 @@ async function dedupedByAuthorPage(params: {
         : [{ createdAt: { gt: d } }, { createdAt: d, id: { gt: cursorId } }]
   }
 
+  // The window is only for choosing authors. Do not hydrate relations for
+  // candidates that will be discarded: each included post brings author,
+  // quote and viewer-interaction queries into the feed path.
   const candidates = await prisma.post.findMany({
     where,
     orderBy: [{ createdAt: order }, { id: order }],
     take: fetchSize,
-    include: postInclude(userId),
+    select: { id: true, authorId: true, createdAt: true },
   })
 
   // Application-level dedup: keep first post per authorId
   const seen = new Set<string>()
-  const posts: FeedPost[] = []
+  const selected: typeof candidates = []
+
   for (const post of candidates) {
     if (!seen.has(post.authorId)) {
       seen.add(post.authorId)
-      posts.push(post)
+      selected.push(post)
     }
-    if (posts.length >= take) break
+    if (selected.length >= take) break
   }
 
-  // If we didn't get enough unique authors from the window,
-  // fall back to including duplicates (better to show content than nothing).
-  if (posts.length < take && candidates.length > posts.length) {
+  // If unique authors in the window yielded fewer than `take` posts,
+  // backfill from remaining unselected candidates. Backfilling MUST preserve
+  // candidates' total order (createdAt desc, id desc) and advance the consumption boundary.
+  if (selected.length < take && candidates.length > selected.length) {
+    const selectedIds = new Set(selected.map((p) => p.id))
     for (const post of candidates) {
-      if (!posts.includes(post)) {
-        posts.push(post)
-        if (posts.length >= take) break
+      if (!selectedIds.has(post.id)) {
+        selected.push(post)
+        selectedIds.add(post.id)
+        if (selected.length >= take) break
       }
     }
+    const candidateIdx = new Map(candidates.map((c, idx) => [c.id, idx]))
+    selected.sort((a, b) => candidateIdx.get(a.id)! - candidateIdx.get(b.id)!)
   }
 
+  const lastSelected = selected.length > 0 ? selected[selected.length - 1] : null
+  const lastIndex = lastSelected
+    ? candidates.findIndex((c) => c.id === lastSelected.id)
+    : -1
+
+  // Keyset cursor points to the exact consumption boundary:
+  // There is a next page if:
+  // 1. The window was full (candidates.length === fetchSize), meaning the DB
+  //    may contain more rows beyond this window, OR
+  // 2. Unconsumed candidates remain in the current window after lastIndex.
+  const hasMore =
+    selected.length > 0 &&
+    (candidates.length === fetchSize || lastIndex < candidates.length - 1)
+
   const nextCursor =
-    candidates.length >= fetchSize && posts.length > 0
-      ? `${posts[posts.length - 1].createdAt.toISOString()}|${posts[posts.length - 1].id}`
+    hasMore && lastSelected
+      ? `${lastSelected.createdAt.toISOString()}|${lastSelected.id}`
       : null
+
+  if (selected.length === 0) return { posts: [], nextCursor }
+  const hydrated = await prisma.post.findMany({
+    where: { id: { in: selected.map((post) => post.id) }, deletedAt: null },
+    include: postInclude(userId),
+  })
+  const byId = new Map(hydrated.map((post) => [post.id, post]))
+  const posts = selected
+    .map((post) => byId.get(post.id))
+    .filter((post): post is FeedPost => post !== undefined)
 
   return { posts, nextCursor }
 }
@@ -374,7 +418,7 @@ export async function countNewPosts(params: {
   }
 
   if (filter.followingOf) {
-    where.authorId = { in: await resolveFollowingIds(filter.followingOf) }
+    where.author = followedAuthors(filter.followingOf)
   } else if (filter.authorId) {
     where.authorId = filter.authorId
   }
@@ -390,7 +434,8 @@ export async function getNewPosts(params: {
   filter: FeedFilter
   take: number
 }): Promise<FeedPost[]> {
-  const { userId, since, filter, take } = params
+  const { userId, since, filter } = params
+  const take = normalizePageSize(params.take)
   const where: Prisma.PostWhereInput = {
     deletedAt: null,
     parentId: null,
@@ -398,7 +443,7 @@ export async function getNewPosts(params: {
   }
 
   if (filter.followingOf) {
-    where.authorId = { in: await resolveFollowingIds(filter.followingOf) }
+    where.author = followedAuthors(filter.followingOf)
   } else if (filter.authorId) {
     where.authorId = filter.authorId
   }

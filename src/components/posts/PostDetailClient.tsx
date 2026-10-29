@@ -199,6 +199,8 @@ export interface PostDetailClientProps {
   /** Ancestor chain (root → ... → parent) shown above MainPost for replies.
    *  Empty array for root posts. */
   chainPosts?: SafePost[]
+  initialHasMoreAncestors?: boolean
+  initialAncestorCursor?: string | null
   initialReplies: SafePost[]
   initialReplyCursor: string | null
   currentUser: SafeUser | null
@@ -227,6 +229,8 @@ export function PostDetailClient({
   postId,
   mainPost,
   chainPosts = [],
+  initialHasMoreAncestors = false,
+  initialAncestorCursor = null,
   initialReplies,
   initialReplyCursor,
   currentUser,
@@ -237,6 +241,47 @@ export function PostDetailClient({
   // Tracks whether the main post has at least one reply. Initialized from
   // the SSR reply list and kept current as replies are injected client-side.
   const hasRepliesRef = useRef(initialReplies.length > 0)
+
+  // Independent ancestor chain state
+  const [ancestorPosts, setAncestorPosts] = useState<SafePost[]>(chainPosts)
+  const [hasMoreAncestors, setHasMoreAncestors] = useState<boolean>(initialHasMoreAncestors)
+  const [ancestorCursor, setAncestorCursor] = useState<string | null>(initialAncestorCursor)
+  const [isLoadingEarlier, setIsLoadingEarlier] = useState(false)
+
+  const handleLoadEarlier = useCallback(async () => {
+    if (!ancestorCursor || isLoadingEarlier) return
+    setIsLoadingEarlier(true)
+    try {
+      const res = await fetch(
+        `/api/posts?ancestorsOf=${encodeURIComponent(postId)}&cursor=${encodeURIComponent(ancestorCursor)}&take=20`,
+      )
+      if (!res.ok) throw new Error('Failed to load earlier posts')
+      const data = await res.json()
+      if (Array.isArray(data.posts) && data.posts.length > 0) {
+        const prevScrollHeight = document.documentElement.scrollHeight
+        const prevScrollY = window.scrollY
+
+        setAncestorPosts((prev) => [...data.posts, ...prev])
+        setAncestorCursor(data.nextCursor ?? null)
+        setHasMoreAncestors(Boolean(data.hasMoreAncestors))
+
+        requestAnimationFrame(() => {
+          const newScrollHeight = document.documentElement.scrollHeight
+          const delta = newScrollHeight - prevScrollHeight
+          if (delta > 0) {
+            window.scrollTo(0, prevScrollY + delta)
+          }
+        })
+      } else {
+        setHasMoreAncestors(false)
+        setAncestorCursor(null)
+      }
+    } catch {
+      // Keep state so the user can retry
+    } finally {
+      setIsLoadingEarlier(false)
+    }
+  }, [postId, ancestorCursor, isLoadingEarlier])
 
   const handleReady = useCallback((handle: InfinitePostListHandle) => {
     listRef.current = handle
@@ -273,8 +318,12 @@ export function PostDetailClient({
   //   MainPost images, reply injection) and re-scroll accordingly.
   const mainPostRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
+  const hasInitialScrolledRef = useRef(false)
 
   useEffect(() => {
+    if (hasInitialScrolledRef.current) return
+    hasInitialScrolledRef.current = true
+
     const scrollToMainPost = () => {
       if (chainPosts.length > 0 && mainPostRef.current) {
         // PageHeader inner div h-[53px] + border-b 1px = 54px total.
@@ -336,10 +385,22 @@ export function PostDetailClient({
       {/* Ancestor thread — PostCards with vertical connector lines (Twitter-style).
           Rendered ABOVE MainPost. On page open the view auto-scrolls past these
           to focus on MainPost; user scrolls up to see the thread context. */}
-      {chainPosts.length > 0 && (
+      {(hasMoreAncestors || ancestorPosts.length > 0) && (
         <div>
-          {chainPosts.map((post, i) => {
-            const isLast = i === chainPosts.length - 1
+          {hasMoreAncestors && (
+            <div className="relative border-b border-line/60 px-4 py-2 bg-canvas/40">
+              <button
+                type="button"
+                onClick={handleLoadEarlier}
+                disabled={isLoadingEarlier}
+                className="inline-flex items-center gap-2 text-sm font-semibold text-brand hover:text-brand-strong transition-colors min-h-[44px] touch-manipulation cursor-pointer disabled:opacity-50"
+              >
+                {isLoadingEarlier ? 'Loading earlier posts…' : 'Show earlier posts'}
+              </button>
+            </div>
+          )}
+          {ancestorPosts.map((post, i) => {
+            const isLast = i === ancestorPosts.length - 1
             return (
               <div key={post.id} className="relative">
                 <PostCard post={post} hideComment variant="thread" />
@@ -373,7 +434,7 @@ export function PostDetailClient({
           min-h, whichever is taller) — clean, no phantom scroll.
 
           54px = PageHeader h-[53px] + border-b 1px. */}
-      <div className={cn(chainPosts.length > 0 && 'min-h-[calc(100dvh_-_54px)]')}>
+      <div className={cn(ancestorPosts.length > 0 && 'min-h-[calc(100dvh_-_54px)]')}>
         {/* MainPost — relative z-30 ensures it (and its popover menus)
             paint above the connector-line overflow and the reply list below.
             The PostActions repost popover and PostMenu dropdown both elevate

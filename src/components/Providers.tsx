@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import type { SafeUser } from '@/lib/types'
 import { ToastProvider, useToast } from '@/components/ui/Toast'
 import { ReportProvider } from '@/components/ReportDialog'
+import { BrowseStateProvider } from '@/components/posts/BrowseStateProvider'
 import { post } from '@/lib/api-client'
 
 interface AuthContextValue {
@@ -16,6 +17,21 @@ interface AuthContextValue {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
+export interface PublicSiteConfig {
+  origin: string
+  name: string
+  shortName: string
+  keyPrefix: string
+  description: string
+  tagline: string
+}
+const SiteContext = createContext<PublicSiteConfig | null>(null)
+
+export function useSite(): PublicSiteConfig {
+  const site = useContext(SiteContext)
+  if (!site) throw new Error('Site context is required.')
+  return site
+}
 
 /** Current signed-in user (server-fetched, passed down via <Providers>). */
 export function useCurrentUser(): SafeUser | null {
@@ -67,20 +83,33 @@ function AuthProvider({
     [currentUser, login, logout],
   )
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  return (
+    <AuthContext.Provider value={value}>
+      {/* Browse state (feed pages, cursors, scroll positions) is owned by
+          the current identity: login()/logout() change identityKey here,
+          which remounts the provider and clears the previous identity's
+          data; route navigation keeps it alive. */}
+      <BrowseStateProvider identityKey={currentUser?.id ?? 'anon'}>
+        {children}
+      </BrowseStateProvider>
+    </AuthContext.Provider>
+  )
 }
 
 export interface ProvidersProps {
   currentUser: SafeUser | null
+  site: PublicSiteConfig
   children: ReactNode
 }
 
-export default function Providers({ currentUser, children }: ProvidersProps) {
+export default function Providers({ currentUser, site, children }: ProvidersProps) {
   return (
-    <ToastProvider>
-      <ReportProvider>
-        <AuthProvider currentUser={currentUser}>{children}</AuthProvider>
-      </ReportProvider>
-    </ToastProvider>
+    <SiteContext.Provider value={site}>
+      <ToastProvider>
+        <ReportProvider>
+          <AuthProvider currentUser={currentUser}>{children}</AuthProvider>
+        </ReportProvider>
+      </ToastProvider>
+    </SiteContext.Provider>
   )
 }

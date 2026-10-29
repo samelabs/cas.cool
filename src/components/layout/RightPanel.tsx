@@ -3,7 +3,8 @@ import { ProfileCard } from '@/components/profile/ProfileCard'
 import { SearchIcon, TrendingIcon, SparklesIcon } from '@/components/icons'
 import type { SafeUser } from '@/lib/types'
 import { t } from '@/lib/i18n'
-import { VERSION, GITHUB_URL } from '@/lib/version'
+import { VERSION } from '@/lib/version'
+import { getSiteConfig } from '@/lib/site'
 
 export interface TrendingChemical {
   casNumber: string
@@ -38,7 +39,8 @@ function TrendingRow({ rank, item }: { rank: number; item: TrendingChemical }) {
   )
 }
 
-export function RightPanel({ trending = [], suggestions = [] }: RightPanelProps) {
+export async function RightPanel({ trending = [], suggestions = [] }: RightPanelProps) {
+  const site = await getSiteConfig()
   return (
     <div className="flex h-full w-full flex-col gap-4 px-4 py-2">
       {/* Search */}
@@ -111,7 +113,15 @@ export function RightPanel({ trending = [], suggestions = [] }: RightPanelProps)
           <Link prefetch={false} href="/explore" className="hover:text-ink-muted">{t.nav.explore}</Link> ·{' '}
           <Link prefetch={false} href="/settings" className="hover:text-ink-muted">{t.nav.settings}</Link>
         </p>
-        <p className="mt-1">© {new Date().getFullYear()} CAS.cool · <Link href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className="hover:text-ink-muted">v{VERSION}</Link></p>
+        <p className="mt-1">
+          © {new Date().getFullYear()} {site.name} · {site.githubUrl ? (
+            <Link href={site.githubUrl} target="_blank" rel="noopener noreferrer" className="hover:text-ink-muted">
+              v{VERSION}
+            </Link>
+          ) : (
+            <span>v{VERSION}</span>
+          )}
+        </p>
       </footer>
     </div>
   )

@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { SESSION_COOKIE } from '@/lib/session-constants'
 
 /**
  * Next.js 16 "proxy" (formerly middleware).
  *
  * Single responsibility: OPTIMISTIC auth check for protected page routes.
  *
- * Based purely on the presence of the `cas_session` cookie. Real session
+ * Based purely on the presence of the `feed_session` cookie. Real session
  * validation happens in server components / route handlers via resolveIdentity().
  * This just keeps unauthenticated visitors off the protected app shell.
  *
@@ -16,8 +17,6 @@ import type { NextRequest } from 'next/server'
  *
  * All API rate limiting is handled inside Route Handlers via rate-limit.ts.
  */
-
-const SESSION_COOKIE = 'cas_session'
 
 const PROTECTED_PREFIXES = [
   '/settings',
@@ -48,9 +47,9 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // API routes never need the page-auth redirect — their auth/rate-limiting
+  // API routes and MCP endpoint never need the page-auth redirect — their auth/rate-limiting
   // is handled inside the route handlers via api-auth.ts / rate-limit.ts.
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|api/|.*\\..*).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/|mcp|.*\\..*).*)',
   ],
 }

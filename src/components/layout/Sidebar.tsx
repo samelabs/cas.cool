@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Avatar } from '@/components/ui/Avatar'
 import { cn } from '@/lib/cn'
-import { useCurrentUser, useAuth } from '@/components/Providers'
+import { useCurrentUser, useAuth, useSite } from '@/components/Providers'
 import {
   BellIcon,
   SearchIcon,
@@ -22,6 +22,7 @@ import {
 import { useBadges } from '@/components/BadgeProvider'
 import type { SafeUser } from '@/lib/types'
 import { t } from '@/lib/i18n'
+import { BrandWordmark } from '@/components/layout/BrandWordmark'
 
 export interface SidebarProps {
   currentUser?: SafeUser | null
@@ -47,6 +48,7 @@ function Badge({ count }: { count: number }) {
 }
 
 export function Sidebar({ currentUser: userProp, needsDocuments = false }: SidebarProps) {
+  const site = useSite()
   const pathname = usePathname()
   const ctxUser = useCurrentUser()
   const { logout } = useAuth()
@@ -82,11 +84,11 @@ export function Sidebar({ currentUser: userProp, needsDocuments = false }: Sideb
         prefetch={false}
         href="/"
         className="mb-2 flex items-center justify-center rounded-full px-2 py-3 text-brand transition-colors hover:bg-surface-hover xl:justify-start xl:gap-2"
-        title={t.brand.name}
+        title={site.name}
       >
         <FlaskIcon className="h-8 w-8 shrink-0" />
         <span className="hidden text-xl font-extrabold tracking-tight xl:inline">
-          CAS<span className="text-ink">.cool</span>
+          <BrandWordmark />
         </span>
       </Link>
 

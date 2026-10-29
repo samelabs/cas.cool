@@ -6,10 +6,9 @@
  */
 
 import { NextRequest } from 'next/server'
-import bcrypt from 'bcryptjs'
 import { prisma } from '@/lib/db'
 import { deleteUnreferencedUploads } from '@/lib/upload-cleanup'
-import { requireAuth } from '@/lib/api-auth'
+import { requireWrite } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { userSelect, serializeUser } from '@/lib/serialize'
 
@@ -20,7 +19,7 @@ function jsonError(status: number, code: string, message: string) {
 // ── PATCH /api/me/profile ─────────────────────────────────────
 
 export async function PATCH(request: NextRequest) {
-  const auth = await requireAuth()
+  const auth = await requireWrite()
   if (!auth.ok) return auth.response
   const limited = checkRateLimit(auth.identity, 'write')
   if (limited) return limited

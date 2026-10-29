@@ -76,9 +76,14 @@ export async function getTrendingChemicals(limit: number = 5): Promise<TrendingC
   return cached()
 }
 
-/** Invalidate the trending cache (called after post create/delete). */
+/** Best-effort invalidation after a committed post mutation. Cache failure
+ *  must not turn a durable create/edit/delete into a failed response. */
 export function revalidateTrending() {
-  revalidateTag(TRENDING_TAG, 'max')
+  try {
+    revalidateTag(TRENDING_TAG, 'max')
+  } catch (error) {
+    console.error('[Trending] cache revalidation failed:', error)
+  }
 }
 
 // ─── Follow Suggestions ───────────────────────────────────────

@@ -16,7 +16,7 @@
 
 import { NextRequest } from 'next/server'
 import { processAndStoreImage, MAX_RAW_BYTES, type UploadPurpose } from '@/lib/image'
-import { resolveIdentity, requireWrite } from '@/lib/api-auth'
+import { requireWrite } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { canUploadMedia } from '@/lib/permissions'
 

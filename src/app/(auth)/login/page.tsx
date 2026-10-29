@@ -5,12 +5,13 @@ import { t } from '@/lib/i18n'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
-import { useAuth } from '@/components/Providers'
+import { useAuth, useSite } from '@/components/Providers'
 import { useToast } from '@/components/ui/Toast'
 import { post } from '@/lib/api-client'
 import type { SafeUser } from '@/lib/types'
 
 export default function LoginPage() {
+  const site = useSite()
   const router = useRouter()
   const { login: setAuthUser } = useAuth()
   const { showToast } = useToast()
@@ -40,9 +41,9 @@ export default function LoginPage() {
   return (
     <div>
       <div className="mb-8 text-center">
-        <h1 className="text-2xl font-extrabold text-ink">{t.auth.loginTitle}</h1>
+        <h1 className="text-2xl font-extrabold text-ink">Sign in to {site.name}</h1>
         <p className="mt-1 text-sm text-ink-faint">
-          {t.auth.loginSubtitle}
+          {site.tagline}
         </p>
       </div>
 
@@ -87,7 +88,7 @@ export default function LoginPage() {
         </Button>
 
         <p className="text-center text-sm text-ink-faint">
-          {t.auth.newToCascool}{' '}
+          New to {site.name}?{' '}
           <Link href="/register" className="font-semibold text-brand hover:underline">
             {t.auth.createAccount}
           </Link>

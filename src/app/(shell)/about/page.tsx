@@ -2,13 +2,19 @@ import Link from 'next/link'
 import { t } from '@/lib/i18n'
 import PageHeader from '@/components/layout/PageHeader'
 import { FlaskIcon, RepostIcon, CommentIcon, SearchIcon } from '@/components/icons'
+import { getSiteConfig } from '@/lib/site'
 
-export const metadata = {
-  title: t.about.title,
-  description: t.seo.aboutDescription,
+export async function generateMetadata() {
+  const site = await getSiteConfig()
+  return {
+    title: t.about.title,
+    description: `About ${site.name} — ${site.description}`,
+    alternates: { canonical: `${site.origin}/about` },
+  }
 }
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  const site = await getSiteConfig()
   return (
     <>
       <PageHeader title={t.about.title} />
@@ -20,15 +26,15 @@ export default function AboutPage() {
             <div className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-2xl bg-brand-tint text-brand">
               <FlaskIcon className="h-9 w-9" />
             </div>
-            <h1 className="text-2xl font-extrabold text-ink">{t.brand.name}</h1>
+            <h1 className="text-2xl font-extrabold text-ink">{site.name}</h1>
             <p className="mt-2 text-ink-faint">
-              {t.brand.tagline}
+              {site.tagline}
             </p>
           </div>
 
           {/* What is it */}
           <section className="mb-8">
-            <h2 className="mb-3 text-lg font-bold text-ink">{t.about.whatIs}</h2>
+            <h2 className="mb-3 text-lg font-bold text-ink">What is {site.name}?</h2>
             <p className="text-base leading-relaxed text-ink-muted">
               {t.about.description}
             </p>

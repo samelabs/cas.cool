@@ -20,7 +20,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAdmin()
+  const auth = await requireAdmin('write')
   if (!auth.ok) return auth.response
 
   const limited = checkRateLimit(auth.identity, 'write')

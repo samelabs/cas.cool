@@ -9,15 +9,11 @@ import { requireAdmin } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { prisma } from '@/lib/db'
 
-function jsonError(status: number, code: string, message: string) {
-  return Response.json({ error: { code, message } }, { status })
-}
-
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await requireAdmin()
+  const auth = await requireAdmin('write')
   if (!auth.ok) return auth.response
 
   const limited = checkRateLimit(auth.identity, 'write')

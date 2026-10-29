@@ -1,11 +1,10 @@
 /**
- * CAS.cool — English language pack (i18n baseline)
+ * English language pack for the feed interface.
  *
  * This is the single source of truth for all user-facing text.
  * Import via `import { t } from '@/lib/i18n'`.
  *
  * Terminology rules:
- *  - "CAS.cool" — always this capitalization
  *  - "post" lowercase as common noun, "Post" as UI button/label
  *  - "Sign in" / "Sign out" (not Log in/out)
  *  - No exclamation marks in toast/error messages
@@ -13,12 +12,6 @@
  */
 
 export const en = {
-  // ─── Brand ─────────────────────────────────────────────
-  brand: {
-    name: 'CAS.cool',
-    tagline: 'Discover and share chemicals.',
-  },
-
   // ─── Navigation ────────────────────────────────────────
   nav: {
     home: 'Home',
@@ -58,7 +51,7 @@ export const en = {
     underReview: 'Under review',
     signIn: 'Sign in',
     createAccount: 'Create account',
-    openInNew: 'View this post on CAS.cool',
+    openInNew: 'View this post',
     active: 'Active',
     restricted: 'Restricted',
     suspended: 'Suspended',
@@ -72,20 +65,15 @@ export const en = {
   // ─── Auth ──────────────────────────────────────────────
   auth: {
     // Login
-    loginTitle: 'Sign in to CAS.cool',
-    loginSubtitle: 'Discover and share chemicals.',
     emailOrUsername: 'Email or username',
     emailOrUsernamePlaceholder: 'you@example.com or @username',
     password: 'Password',
     passwordPlaceholder: '••••••••',
     signIn: 'Sign in',
     welcomeBack: 'Welcome back',
-    newToCascool: 'New to CAS.cool?',
     createAccount: 'Create account',
     invalidCredentials: 'Invalid email, username, or password.',
     // Register
-    registerTitle: 'Join CAS.cool',
-    registerSubtitle: 'Join the community for chemistry.',
     displayName: 'Display name',
     displayNamePlaceholder: 'Your name',
     username: 'Username',
@@ -103,7 +91,6 @@ export const en = {
     errPasswordShort: 'Password must be at least 8 characters.',
     errPasswordMismatch: 'Passwords do not match.',
     errRegisterFailed: 'Registration failed.',
-    accountCreated: 'Account created — welcome to CAS.cool',
     // Username availability
     checking: 'Checking…',
     usernameTaken: 'That username is taken.',
@@ -257,7 +244,6 @@ export const en = {
       FOLLOW: 'followed you',
       REPOST: 'reposted your post',
       MESSAGE: 'sent you a message',
-      MENTION: 'mentioned you',
       REPORT_RESOLVED: 'resolved a report',
     } as const,
   },
@@ -474,9 +460,8 @@ export const en = {
   // ─── About ─────────────────────────────────────────────
   about: {
     title: 'About',
-    whatIs: 'What is CAS.cool?',
     description:
-      'CAS.cool is an open-source web app built with Next.js, React, and PostgreSQL. Source code is publicly available on GitHub.',
+      'An open-source web app built with Next.js, React, and PostgreSQL. Source code is publicly available on GitHub.',
     features: 'Features',
     casNumbered: 'CAS-Numbered Posts',
     casNumberedDesc: 'Tag any post with a CAS Registry Number to link it to a specific chemical compound.',
@@ -495,22 +480,25 @@ export const en = {
     unexpectedError: 'An unexpected error occurred. Please try again.',
     notFound404: '404',
     notFoundMessage: "This page doesn't exist or may have been removed.",
-    backToHome: 'Back to CAS.cool',
+    backToHome: 'Back to home',
     unauthorized: 'Unauthorized',
     failedToSendMessage: 'Failed to send message',
     uploadFailed: 'Upload failed',
     failed: 'Failed',
   },
 
-  // ─── API Keys (external API management) ────────────────
+  // ─── API Keys & MCP ──────────────────────────────────────
   api: {
-    title: 'API Keys',
-    description: 'Generate API keys to access cas.cool programmatically. Available for verified members only.',
+    title: 'API Keys & MCP',
+    description: 'Unified credentials for REST API and Model Context Protocol (MCP) access.',
     createKey: 'Create new key',
     keyNamePlaceholder: 'e.g. My chemistry bot',
+    unifiedKey: 'Unified API Key',
+    readWriteCapable: 'Read & write (verified)',
+    readOnlyCapable: 'Read only (unverified)',
     create: 'Create key',
     noKeys: 'No API keys yet.',
-    rawKeyWarning: 'Copy this key now. You won\'t be able to see it again.',
+    rawKeyWarning: 'Copy this key now. You will not be able to see it again.',
     rawKeyCopied: 'Copied to clipboard',
     copyKey: 'Copy key',
     revoke: 'Revoke',
@@ -518,45 +506,34 @@ export const en = {
     lastUsed: 'Last used',
     never: 'Never',
     createdAt: 'Created',
-    verificationRequired: 'API access is available for verified members only.',
+    verificationNotice: 'Unverified accounts have read-only API and MCP capabilities. Once verified, existing keys automatically gain write capabilities.',
     keyCreated: 'API key created successfully.',
     keyRevoked: 'API key revoked.',
     expiresAt: 'Expires',
+    mcpTitle: 'Model Context Protocol (MCP)',
+    mcpDescription: 'Connect AI agents directly to the chemical stream using Streamable HTTP.',
+    mcpEndpoint: 'MCP Endpoint',
+    mcpConfigExample: 'Client configuration example',
+    copyConfig: 'Copy config',
   },
 
   // ─── SEO / Meta ────────────────────────────────────────
   seo: {
-    siteName: 'CAS.cool',
-    titleDefault: 'CAS.cool — Chemical Social Network',
-    titleTemplate: '%s · CAS.cool',
-    description:
-      'CAS.cool is the community to discover and share chemicals — explore compounds by CAS Registry Number, share knowledge, and connect with people worldwide.',
     keywords: [
       'chemistry', 'chemical', 'CAS number', 'CAS registry',
-      'compounds', 'molecules', 'cas.cool',
+      'compounds', 'molecules',
     ],
-    og: {
-      title: 'CAS.cool — Chemical Social Network',
-      description: 'Discover and share chemicals by CAS Registry Number.',
-      siteName: 'CAS.cool',
-    },
-    twitter: {
-      title: 'CAS.cool — Chemical Social Network',
-      description: 'Discover and share chemicals.',
-    },
     // Home page
     homeTitle: 'Discover & Share Chemical Knowledge',
     homeDescription:
       'Discover and share chemicals. Explore compounds by CAS Registry Number, share knowledge, and connect with the chemistry community.',
     // Dynamic pages
     postNotFound: 'Post not found',
-    postByAuthor: (author: string) => `${author} on CAS.cool`,
     postWithCas: (author: string, cas: string) => `${author} posted CAS ${cas}`,
     casInvalid: 'Invalid CAS Number',
     casTitle: (cas: string, name: string | null) =>
       name ? `CAS ${cas} — ${name}` : `CAS ${cas}`,
-    aboutDescription: 'About CAS.cool — discover and share chemicals.',
-    verifyTitle: 'Identity Verification — CAS.cool',
+    verifyTitle: 'Identity Verification',
     verifyDescription: 'Verify your identity to unlock full platform access.',
   },
 } as const

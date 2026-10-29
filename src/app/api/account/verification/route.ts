@@ -7,7 +7,7 @@
 
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
-import { requireAuth } from '@/lib/api-auth'
+import { requireWrite } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 
 function jsonError(status: number, code: string, message: string) {
@@ -15,7 +15,7 @@ function jsonError(status: number, code: string, message: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAuth()
+  const auth = await requireWrite()
   if (!auth.ok) return auth.response
   const limited = checkRateLimit(auth.identity, 'write')
   if (limited) return limited

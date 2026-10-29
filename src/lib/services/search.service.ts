@@ -6,7 +6,8 @@
 
 import { prisma } from '@/lib/db'
 import { postInclude, serializePost, userSelect, serializeUsers } from '@/lib/serialize'
-import { FEED_PAGE_SIZE } from '@/lib/feed'
+import { attachPostChemicals } from '@/lib/chemistry/post-views'
+import { isCanonicalTimestamp, normalizePageSize } from '@/lib/pagination'
 import type { SafePost, SafeUser } from '@/lib/types'
 
 export interface SearchFirstPage {
@@ -52,7 +53,7 @@ async function searchPostsPage(
   const q = query.trim()
   if (q.length < 2) return { posts: [], nextCursor: null }
 
-  const take = Math.min(Math.max(limit ?? FEED_PAGE_SIZE, 1), 50)
+  const take = normalizePageSize(limit)
   const isCasLike = /[\d-]/.test(q) && q.replace(/[^0-9-]/g, '').length >= 3
 
   // Cursor → (createdAt, id) keyset predicate. NULL for the first page.
@@ -63,32 +64,37 @@ async function searchPostsPage(
     if (idx === -1) return { posts: [], nextCursor: null }
     cursorDate = cursor.slice(0, idx)
     cursorId = cursor.slice(idx + 1)
-    // Both halves are interpolated into the raw SQL below (not bind params),
-    // so BOTH are whitelisted, not just parsed:
-    //  - date: strict ISO-8601 UTC shape (what nextCursor emits via toISOString)
-    //  - id:   exact id shapes the DB holds (uuid / cuid / tid_N / pid_N
-    //          import rows; verified against all 785k rows, 0 misses)
-    // A quote in either half can never reach the string literal.
-    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?Z$/.test(cursorDate)) {
+    // Strictly validate cursor format before binding:
+    //  - date: valid canonical UTC timestamp (what nextCursor emits)
+    //  - id:   exact id shapes the DB holds (uuid / cuid / tid_N / pid_N)
+    if (!isCanonicalTimestamp(cursorDate)) {
       return { posts: [], nextCursor: null }
     }
     if (!/^(tid|pid)_[0-9]{1,20}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$|^c[a-z0-9]{20,30}$/.test(cursorId)) {
       return { posts: [], nextCursor: null }
     }
   }
+  const params: unknown[] = [`%${q}%`]
+  let cursorPredicate = ''
+  if (cursorDate && cursorId) {
+    params.push(cursorDate, cursorId)
+    // Keyset pagination predicate using bound parameters ($2, $3) — no string interpolation.
+    // Explicit UTC conversion ensures naive timestamp(3) column matches the ISO UTC timestamp.
+    cursorPredicate = `AND (p."createdAt", p.id) < ($2::timestamptz AT TIME ZONE 'UTC', $3)`
+  }
+  params.push(take)
+  const limitParameter = `$${params.length}`
 
   // Two-step: UNION of content ILIKE + CAS join
   const branches: string[] = [`
     SELECT p.id, p."createdAt"
     FROM "Post" p
     WHERE p."parentId" IS NULL
-      AND p.content ILIKE ${'$1'}
-      ${cursorDate ? `AND (p."createdAt", p.id) < ('${cursorDate}'::timestamptz, '${cursorId}')` : ''}
+      AND p.content ILIKE $1
+      ${cursorPredicate}
     ORDER BY p."createdAt" DESC, p.id DESC
-    LIMIT ${take}
+    LIMIT ${limitParameter}
   `]
-
-  const params: unknown[] = [`%${q}%`]
 
   if (isCasLike) {
     branches.push(`
@@ -97,12 +103,11 @@ async function searchPostsPage(
       JOIN "_ChemicalToPost" cp ON cp."B" = p.id
       JOIN "Chemical" c ON c.id = cp."A"
       WHERE p."parentId" IS NULL
-        AND c."casNumber" ILIKE ${'$2'}
-        ${cursorDate ? `AND (p."createdAt", p.id) < ('${cursorDate}'::timestamptz, '${cursorId}')` : ''}
+        AND c."casNumber" ILIKE $1
+        ${cursorPredicate}
       ORDER BY p."createdAt" DESC, p.id DESC
-      LIMIT ${take}
+      LIMIT ${limitParameter}
     `)
-    params.push(`%${q}%`)
   }
 
   const unionSQL = `
@@ -110,7 +115,7 @@ async function searchPostsPage(
       ${branches.map(b => `(${b})`).join('\n        UNION\n        ')}
     ) sub
     ORDER BY "createdAt" DESC, id DESC
-    LIMIT ${take}
+    LIMIT ${limitParameter}
   `
 
   const idRows = await prisma.$queryRawUnsafe<{ id: string }[]>(unionSQL, ...params)
@@ -132,7 +137,7 @@ async function searchPostsPage(
       : null
 
   return {
-    posts: posts.map(serializePost),
+    posts: await attachPostChemicals(posts.map(serializePost)),
     nextCursor,
   }
 }

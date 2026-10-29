@@ -55,7 +55,13 @@ export interface SafeChemical {
   postCount: number
 }
 
-export interface SafePost {
+/**
+ * Product-independent post projection produced by the feed/post core
+ * (`serialize.ts`, `post-core.service.ts`). It carries everything a
+ * generic timeline needs — selection, ordering, engagement state — and
+ * no product metadata.
+ */
+export interface CorePost {
   id: string
   shortCode: string | null
   authorId: string
@@ -66,8 +72,7 @@ export interface SafePost {
   replyToUsername?: string | null
   content: string
   quotePostId: string | null
-  quotedPost?: SafePost | null
-  chemicals: SafeChemical[]
+  quotedPost?: CorePost | null
   images: string[]
   views: number
   createdAt: Date
@@ -86,6 +91,14 @@ export interface SafePost {
   bookmarked?: boolean
 }
 
+/** cas.cool's public post view: the core post plus chemical product tags.
+ *  Assembled by the application layer (post.service.ts / post-write.service.ts)
+ *  via `attachPostChemicals` — never by the feed/post core. */
+export interface SafePost extends Omit<CorePost, 'quotedPost'> {
+  quotedPost?: SafePost | null
+  chemicals: SafeChemical[]
+}
+
 export interface SafeConversation {
   id: string
   otherUser: SafeUser
@@ -99,7 +112,7 @@ export interface SafeConversation {
 
 export interface SafeNotification {
   id: string
-  type: 'LIKE' | 'COMMENT' | 'FOLLOW' | 'REPOST' | 'MESSAGE' | 'MENTION' | 'REPORT_RESOLVED'
+  type: 'LIKE' | 'COMMENT' | 'FOLLOW' | 'REPOST' | 'MESSAGE' | 'REPORT_RESOLVED'
   from: SafeUser
   postId: string | null
   postShortCode?: string | null

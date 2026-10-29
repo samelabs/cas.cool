@@ -14,9 +14,17 @@ import {
   getMatchingChemicals,
 } from '@/lib/services/search.service'
 import { getTimelinePage } from '@/lib/services/post.service'
+import { getSiteConfig } from '@/lib/site'
 import type { SafePost, SafeUser } from '@/lib/types'
+import type { Metadata } from 'next'
 
-export const metadata = { title: t.explore.title }
+export async function generateMetadata(): Promise<Metadata> {
+  const site = await getSiteConfig()
+  return {
+    title: t.explore.title,
+    alternates: { canonical: `${site.origin}/explore` },
+  }
+}
 
 function asString(v: string | string[] | undefined): string {
   return Array.isArray(v) ? v[0] ?? '' : v ?? ''
@@ -27,7 +35,8 @@ export default async function ExplorePage({
 }: {
   searchParams: Promise<{ q?: string | string[] }>
 }) {
-  const q = asString((await searchParams).q).trim()
+  const sp = await searchParams
+  const q = asString(sp.q).trim()
   const me = await getCurrentUser()
   const searchAllowed = canSearch(me)
   const searching = searchAllowed && q.length > 0
@@ -58,7 +67,7 @@ export default async function ExplorePage({
     matchedChemicals = chemicalsResult
     basePath = `/api/search?q=${encodeURIComponent(q)}`
   } else {
-    // Browse: SSR-seed with engagement-ranked recommended feed.
+    // Browse: SSR-seed with engagement-ranked recommended feed (first page).
     // Explore is the discovery page — surfaces high-engagement content
     // that users might not see in the chronological home timeline.
     const result = await getTimelinePage({ tab: 'foryou', userId: me?.id })

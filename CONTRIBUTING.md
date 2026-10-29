@@ -49,12 +49,16 @@ src/
     reports/          User reports
   components/       React components
   lib/              Shared utilities
-    api-auth.ts       Unified auth middleware (API Key + Session)
-    rate-limit.ts     Token-bucket rate limiting
+    api-auth.ts       Unified identity resolution (API Key + Session + anonymous)
+    rate-limit.ts     Token-bucket rate limiting (applied in route handlers)
     api-client.ts     Frontend fetch wrapper
     image.ts          Server-side image processing (sharp)
     serialize.ts      Post serialization (postInclude)
-    proxy.ts          Middleware (auth check, rate limit)
+    services/         Domain services (post, user, message, notify, search, layout)
+    permissions.ts    Feature gates (verification tiers)
+  proxy.ts          Page-route auth redirect only (Next.js proxy) — NO rate
+                    limiting here; API auth/rate-limiting lives in route
+                    handlers via api-auth.ts / rate-limit.ts
 prisma/
   schema.prisma     Database schema (source of truth)
   migrations/       Prisma migrations
@@ -63,10 +67,10 @@ prisma/
 ### Key Decisions
 
 - **Single Next.js process**: all API endpoints are Route Handlers. No separate API server process.
-- **Auth**: unified middleware handles both API Key (header) and Cookie Session (web). See `src/lib/api-auth.ts`.
+- **Auth**: unified identity resolution handles both API Key (header) and Cookie Session (web). See `src/lib/api-auth.ts`.
 - **Repost**: creates a `Repost` row AND a `Post` (empty content + `quotePostId`).
-- **Replies**: `Post.parentId` self-reference (Comment table is unused).
-- **Chemical & Tag**: independent M2M models, not flat fields on Post.
+- **Replies**: `Post.parentId` self-reference (no Comment model exists in the schema).
+- **Chemical**: M2M model linking posts to CAS Registry Numbers. The former Tag model was removed in migration `20260710040000_remove_tag_system`.
 
 ## Code Standards
 
@@ -81,9 +85,10 @@ prisma/
 
 ### API
 
-- All mutations require auth (`getCurrentUser()`) and verify resource ownership.
-- Rate limiting via `src/lib/rate-limit.ts` (token bucket, per-user or per-IP).
+- All mutations require auth (`requireAuth()` / `requireWrite()` from `src/lib/api-auth.ts`; server components use `getCurrentUser()`) and verify resource ownership.
+- Rate limiting via `src/lib/rate-limit.ts` (token bucket, per identity: API key / user / IP) — applied inside route handlers.
 - Parameterized Prisma queries only. No string-interpolated SQL.
+- Full endpoint inventory, auth tiers, and compatibility constraints: [`docs/API-BASELINE.md`](docs/API-BASELINE.md).
 
 ### Database
 
@@ -96,12 +101,16 @@ prisma/
 # Lint
 npm run lint
 
-# Build
-npm run build
+# Type check
+npm run typecheck
 
-# API tests (if present)
-# npm run test:api  (removed — no separate API process)
+# Build (requires a reachable, migrated database — /sitemap.xml
+# prerenders at build time and queries the DB)
+npm run build
 ```
+
+See [`DEVELOPMENT.md`](DEVELOPMENT.md) for the full standard flow
+(environment, install, migrations, deploy).
 
 ## Pull Request Process
 

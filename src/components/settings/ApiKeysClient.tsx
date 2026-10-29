@@ -7,6 +7,7 @@ import { t } from '@/lib/i18n'
 import { cn } from '@/lib/cn'
 import { get, post, del } from '@/lib/api-client'
 import { AlertIcon, XIcon } from '@/components/icons'
+import { useSite } from '@/components/Providers'
 
 interface ApiKey {
   id: string
@@ -27,21 +28,44 @@ export function ApiKeysClient({
   verificationStatus: string
 }) {
   const { showToast } = useToast()
+  const site = useSite()
   const [keys, setKeys] = useState<ApiKey[]>([])
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')
   const [creating, setCreating] = useState(false)
   const [newKey, setNewKey] = useState<CreatedKey | null>(null)
   const [revokingId, setRevokingId] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copiedKey, setCopiedKey] = useState(false)
+  const [copiedMcp, setCopiedMcp] = useState(false)
+  const [canProgrammaticWrite, setCanProgrammaticWrite] = useState(verificationStatus === 'verified')
 
-  const isVerified = verificationStatus === 'verified'
+  const mcpUrl = `${site.origin}/mcp`
+  const exampleMcpConfig = JSON.stringify(
+    {
+      mcpServers: {
+        cascool: {
+          url: mcpUrl,
+          headers: {
+            Authorization: 'Bearer YOUR_API_KEY',
+          },
+        },
+      },
+    },
+    null,
+    2,
+  )
 
-  const loadKeys = useCallback(async () => {
+  const refreshData = useCallback(async () => {
     try {
-      const result = await get<{ keys: ApiKey[] }>('/api/account/api-keys')
-      if (result.ok && result.data) {
-        setKeys(result.data.keys as ApiKey[])
+      const [keyResult, capResult] = await Promise.all([
+        get<{ keys: ApiKey[] }>('/api/account/api-keys'),
+        get<{ accountQualifications?: { canProgrammaticWrite?: boolean } }>('/api/account/capabilities'),
+      ])
+      if (keyResult.ok && keyResult.data) {
+        setKeys(keyResult.data.keys as ApiKey[])
+      }
+      if (capResult.ok && capResult.data?.accountQualifications) {
+        setCanProgrammaticWrite(Boolean(capResult.data.accountQualifications.canProgrammaticWrite))
       }
     } catch {
       // silent
@@ -50,24 +74,46 @@ export function ApiKeysClient({
     }
   }, [])
 
-  // Mount: fetch keys once. setLoading(false) in the finally block
-  // is the only state mutation — driven by the async completion, not by effect.
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
+    let ignore = false
+    const load = async () => {
       try {
-        const result = await get<{ keys: ApiKey[] }>('/api/account/api-keys')
-        if (!cancelled && result.ok && result.data) {
-          setKeys(result.data.keys as ApiKey[])
+        const [keyResult, capResult] = await Promise.all([
+          get<{ keys: ApiKey[] }>('/api/account/api-keys'),
+          get<{ accountQualifications?: { canProgrammaticWrite?: boolean } }>('/api/account/capabilities'),
+        ])
+        if (!ignore) {
+          if (keyResult.ok && keyResult.data) {
+            setKeys(keyResult.data.keys as ApiKey[])
+          }
+          if (capResult.ok && capResult.data?.accountQualifications) {
+            setCanProgrammaticWrite(Boolean(capResult.data.accountQualifications.canProgrammaticWrite))
+          }
         }
       } catch {
         // silent
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!ignore) setLoading(false)
       }
-    })()
-    return () => { cancelled = true }
-  }, [])
+    }
+    void load()
+
+    const onFocus = () => {
+      void refreshData()
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshData()
+      }
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      ignore = true
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [refreshData])
 
   const handleCreate = async () => {
     if (!name.trim()) return
@@ -81,7 +127,7 @@ export function ApiKeysClient({
       setNewKey(result.data as CreatedKey)
       setName('')
       showToast(t.api.keyCreated, 'success')
-      loadKeys()
+      refreshData()
     } catch {
       showToast(t.errors.unexpectedError, 'error')
     } finally {
@@ -99,7 +145,7 @@ export function ApiKeysClient({
         return
       }
       showToast(t.api.keyRevoked, 'success')
-      loadKeys()
+      refreshData()
     } catch {
       showToast(t.errors.unexpectedError, 'error')
     } finally {
@@ -107,11 +153,21 @@ export function ApiKeysClient({
     }
   }
 
-  const handleCopy = async (rawKey: string) => {
+  const handleCopyKey = async (rawKey: string) => {
     try {
       await navigator.clipboard.writeText(rawKey)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      setCopiedKey(true)
+      setTimeout(() => setCopiedKey(false), 2000)
+    } catch {
+      showToast(t.postMenu.copyFailed, 'error')
+    }
+  }
+
+  const handleCopyMcp = async () => {
+    try {
+      await navigator.clipboard.writeText(exampleMcpConfig)
+      setCopiedMcp(true)
+      setTimeout(() => setCopiedMcp(false), 2000)
     } catch {
       showToast(t.postMenu.copyFailed, 'error')
     }
@@ -128,47 +184,57 @@ export function ApiKeysClient({
 
   return (
     <div className="px-4 py-4">
-      <p className="mb-6 text-sm text-ink-muted">{t.api.description}</p>
+      <p className="mb-4 text-sm text-ink-muted">{t.api.description}</p>
 
-      {/* Verification gate */}
-      {!isVerified && (
-        <div className="mb-6 rounded-xl border border-warning/40 bg-warning-tint p-4 text-sm text-warning">
-          {t.api.verificationRequired}
-          <Link href="/verify" className="ml-2 font-medium underline">
-            Verify →
-          </Link>
-        </div>
-      )}
+      {/* Dynamic capability status badge */}
+      <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-3 text-sm">
+        <span className="font-medium text-ink">Effective capability:</span>
+        <span
+          className={cn(
+            'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold',
+            canProgrammaticWrite ? 'bg-brand/10 text-brand' : 'bg-line text-ink-muted',
+          )}
+        >
+          {canProgrammaticWrite ? t.api.readWriteCapable : t.api.readOnlyCapable}
+        </span>
+        {!canProgrammaticWrite && (
+          <span className="text-xs text-ink-muted">
+            ({t.api.verificationNotice}{' '}
+            <Link href="/verify" className="font-medium text-brand underline">
+              Verify
+            </Link>
+            )
+          </span>
+        )}
+      </div>
 
-      {/* Create form */}
-      {isVerified && (
-        <div className="mb-6 rounded-xl border border-line bg-surface p-4">
-          <label className="mb-2 block text-sm font-medium">{t.api.createKey}</label>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t.api.keyNamePlaceholder}
-              maxLength={100}
-              className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-sm outline-none focus:border-brand"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && name.trim() && !creating) handleCreate()
-              }}
-            />
-            <button
-              onClick={handleCreate}
-              disabled={!name.trim() || creating}
-              className={cn(
-                'rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition',
-                'hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-50',
-              )}
-            >
-              {creating ? '...' : t.api.create}
-            </button>
-          </div>
+      {/* Create form — available for all active members */}
+      <div className="mb-6 rounded-xl border border-line bg-surface p-4">
+        <label className="mb-2 block text-sm font-medium text-ink">{t.api.createKey}</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t.api.keyNamePlaceholder}
+            maxLength={100}
+            className="flex-1 rounded-lg border border-line bg-surface px-3 py-2 text-base outline-none focus:border-brand"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && name.trim() && !creating) handleCreate()
+            }}
+          />
+          <button
+            onClick={handleCreate}
+            disabled={!name.trim() || creating}
+            className={cn(
+              'rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white transition',
+              'hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-50',
+            )}
+          >
+            {creating ? '...' : t.api.create}
+          </button>
         </div>
-      )}
+      </div>
 
       {/* Raw key display (one-time) */}
       {newKey && (
@@ -176,11 +242,11 @@ export function ApiKeysClient({
           <div className="mb-2 flex items-center justify-between">
             <span className="text-sm font-medium text-brand-ink">
               {newKey.name}
+              <span className="ml-2 text-xs font-normal text-ink-muted">
+                {canProgrammaticWrite ? t.api.readWriteCapable : t.api.readOnlyCapable}
+              </span>
             </span>
-            <button
-              onClick={() => setNewKey(null)}
-              className="text-ink-muted hover:text-ink"
-            >
+            <button onClick={() => setNewKey(null)} className="text-ink-muted hover:text-ink">
               <XIcon className="h-4 w-4" />
             </button>
           </div>
@@ -189,20 +255,49 @@ export function ApiKeysClient({
             {t.api.rawKeyWarning}
           </p>
           <div className="flex items-center gap-2">
-            <code className="flex-1 truncate rounded-lg bg-surface px-3 py-2 text-sm font-mono">
+            <code className="flex-1 truncate rounded-lg bg-surface px-3 py-2 text-sm font-mono text-ink">
               {newKey.rawKey}
             </code>
             <button
-              onClick={() => handleCopy(newKey.rawKey)}
+              onClick={() => handleCopyKey(newKey.rawKey)}
               className="rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium hover:bg-surface-hover"
             >
-              {copied ? t.api.rawKeyCopied : t.api.copyKey}
+              {copiedKey ? t.api.rawKeyCopied : t.api.copyKey}
             </button>
           </div>
         </div>
       )}
 
+      {/* MCP Integration Section */}
+      <div className="mb-6 rounded-xl border border-line bg-surface p-4">
+        <h3 className="text-sm font-semibold text-ink">{t.api.mcpTitle}</h3>
+        <p className="mt-1 text-xs text-ink-muted">{t.api.mcpDescription}</p>
+        <div className="mt-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-ink-muted">{t.api.mcpEndpoint}</span>
+          </div>
+          <code className="mt-1 block rounded-lg bg-surface-hover px-3 py-2 text-xs font-mono text-ink">
+            {mcpUrl}
+          </code>
+        </div>
+        <div className="mt-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-ink-muted">{t.api.mcpConfigExample}</span>
+            <button
+              onClick={handleCopyMcp}
+              className="text-xs font-medium text-brand hover:underline"
+            >
+              {copiedMcp ? t.api.rawKeyCopied : t.api.copyConfig}
+            </button>
+          </div>
+          <pre className="mt-1 overflow-x-auto rounded-lg bg-surface-hover p-3 text-xs font-mono text-ink">
+            {exampleMcpConfig}
+          </pre>
+        </div>
+      </div>
+
       {/* Key list */}
+      <h3 className="mb-3 text-sm font-semibold text-ink">{t.api.title}</h3>
       {loading ? (
         <p className="text-sm text-ink-muted">...</p>
       ) : keys.length === 0 ? (
@@ -210,17 +305,15 @@ export function ApiKeysClient({
       ) : (
         <div className="space-y-3">
           {keys.map((key) => (
-            <div
-              key={key.id}
-              className="rounded-xl border border-line bg-surface p-4"
-            >
+            <div key={key.id} className="rounded-xl border border-line bg-surface p-4">
               <div className="flex items-start justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{key.name}</p>
+                  <p className="font-medium text-ink">{key.name}</p>
                   <p className="mt-1 font-mono text-xs text-ink-muted">
-                    cas_{key.prefix}...
+                    {site.keyPrefix}
+                    {key.prefix}...
                   </p>
-                  <div className="mt-2 flex gap-4 text-xs text-ink-muted">
+                  <div className="mt-2 flex flex-wrap gap-4 text-xs text-ink-muted">
                     <span>
                       {t.api.createdAt}: {formatDate(key.createdAt)}
                     </span>

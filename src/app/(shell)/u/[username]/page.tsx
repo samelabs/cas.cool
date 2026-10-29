@@ -25,7 +25,7 @@ const TABS = [
 
 type TabId = (typeof TABS)[number]['id']
 
-import { SITE_URL } from '@/lib/site'
+import { getSiteConfig } from '@/lib/site'
 export async function generateMetadata({
   params,
 }: {
@@ -45,7 +45,8 @@ export async function generateMetadata({
   const noindex = user.status === 'suspended' || user.status === 'restricted'
 
   const name = user.displayName || user.username
-  const url = `${SITE_URL}/u/${user.username}`
+  const site = await getSiteConfig()
+  const url = `${site.origin}/u/${user.username}`
   const avatar = user.avatar || '/og-default.png'
   const verified = user.verificationStatus === 'verified'
 
@@ -74,7 +75,7 @@ export async function generateMetadata({
       title: `${name} (@${user.username})`,
       description: ogDescription.slice(0, 200),
       url,
-      siteName: t.seo.siteName,
+      siteName: site.name,
       type: 'profile',
       images: [{ url: avatar, alt: `${name} avatar` }],
     },

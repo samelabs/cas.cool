@@ -1,16 +1,15 @@
 import { createHash, randomBytes } from 'crypto'
 
-const KEY_PREFIX = 'cas_'
 const KEY_RANDOM_LENGTH = 32
 
 /** Generate an API key and the non-secret values persisted by the web BFF. */
-export function generateApiKey(): {
+export function generateApiKey(keyPrefix: string): {
   rawKey: string
   keyHash: string
   prefix: string
 } {
   const random = randomBytes(24).toString('base64url').slice(0, KEY_RANDOM_LENGTH)
-  const rawKey = KEY_PREFIX + random
+  const rawKey = keyPrefix + random
   return {
     rawKey,
     keyHash: hashApiKey(rawKey),

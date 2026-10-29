@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth'
 import { t } from '@/lib/i18n'
 import { FlaskIcon, HomeIcon, SearchIcon } from '@/components/icons'
+import { BrandWordmark } from '@/components/layout/BrandWordmark'
 
 /**
  * Standalone layout for auth pages (login, register).
@@ -38,8 +39,8 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         className="relative mb-6 flex items-center gap-2 text-brand transition-opacity hover:opacity-80"
       >
         <FlaskIcon className="h-8 w-8" />
-        <span className="text-xl font-extrabold tracking-tight text-ink">
-          CAS<span className="text-brand">.cool</span>
+        <span className="text-xl font-extrabold tracking-tight text-brand">
+          <BrandWordmark />
         </span>
       </Link>
 

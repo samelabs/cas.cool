@@ -1,0 +1,1 @@
+ALTER TABLE "SiteConfig" ADD COLUMN "keyPrefix" TEXT NOT NULL DEFAULT 'cas_';

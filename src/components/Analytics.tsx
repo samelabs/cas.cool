@@ -1,12 +1,15 @@
 import Script from 'next/script'
+import { getSiteConfig } from '@/lib/site'
 
 /**
  * 51.la analytics — official standard embed.
- *
- * Uses a single inline script with the SDK load + LA.init call together,
- * guaranteeing execution order (no race between two independent Script tags).
+ * Configured dynamically via SiteConfig.analyticsId. If unset, nothing is injected.
  */
-export default function Analytics() {
+export default async function Analytics() {
+  const site = await getSiteConfig()
+  if (!site.analyticsId) return null
+
+  const analyticsId = site.analyticsId
   return (
     <Script id="la-analytics" strategy="afterInteractive">
       {`
@@ -16,7 +19,7 @@ export default function Analytics() {
           s.async = true;
           s.onload = function() {
             if (window.LA) {
-              window.LA.init({ id: '1vMIE9ufxjzLp8iD', ck: '1vMIE9ufxjzLp8iD' });
+              window.LA.init({ id: ${JSON.stringify(analyticsId)}, ck: ${JSON.stringify(analyticsId)} });
             }
           };
           document.head.appendChild(s);

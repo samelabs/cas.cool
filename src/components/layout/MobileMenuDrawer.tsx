@@ -24,6 +24,7 @@ import {
 } from '@/components/icons'
 import type { SafeUser } from '@/lib/types'
 import { t } from '@/lib/i18n'
+import { BrandWordmark } from '@/components/layout/BrandWordmark'
 
 export interface MobileMenuDrawerProps {
   currentUser: SafeUser
@@ -123,7 +124,7 @@ export function MobileMenuDrawer({
               <div className="flex items-center gap-2">
                 <FlaskIcon className="h-7 w-7 text-brand" />
                 <span className="text-lg font-extrabold tracking-tight text-brand">
-                  CAS<span className="text-ink">.cool</span>
+                  <BrandWordmark />
                 </span>
               </div>
               <button

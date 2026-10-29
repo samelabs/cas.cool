@@ -2,7 +2,7 @@
 // defined in src/lib/types.ts. Kept here so every page renders posts/users
 // the exact same way.
 
-import type { SafePost, SafeUser, SafeChemical } from './types'
+import type { CorePost, SafeUser } from './types'
 
 /** Shared Prisma `select` for the public, client-safe fields of a User. */
 export const userSelect = {
@@ -25,25 +25,16 @@ export const userSelect = {
   followingCount: true,
 } as const
 
-/** Prisma select for Chemical — only the fields embedded in posts.
- *  name + smiles are deliberately excluded: they're system-maintained
- *  metadata displayed ONLY on the CAS detail page, not in post cards
- *  or search results. Post cards show just the CAS number as a tag. */
-export const chemicalSelect = {
-  id: true,
-  casNumber: true,
-  postCount: true,
-} as const
-
 /**
- * Shared Prisma `include` for a Post: author + chemicals + engagement
- * counts + the current user's like / repost / bookmark state.
+ * Shared Prisma `include` for a core Post: author + engagement counts +
+ * the current user's like / repost / bookmark state. Deliberately loads no
+ * product relations — the chemical layer attaches compound tags per page
+ * (`@/lib/chemistry/post-views`), so no per-post Chemical query exists.
  */
 export function postInclude(currentUserId?: string | null) {
   const uid = currentUserId ?? '__no_user__'
   return {
     author: { select: userSelect },
-    chemicals: { select: chemicalSelect },
     quotedPost: { include: postIncludeNested(uid) },
     // Engagement counts read from denormalized columns (likeCount, replyCount,
     // repostCount, bookmarkCount) — top-level scalar fields, included by default.
@@ -58,7 +49,6 @@ function postIncludeNested(currentUserId?: string | null) {
   const uid = currentUserId ?? '__no_user__'
   return {
     author: { select: userSelect },
-    chemicals: { select: chemicalSelect },
     likes: { where: { userId: uid }, select: { id: true } },
     reposts: { where: { userId: uid }, select: { id: true } },
     bookmarks: { where: { userId: uid }, select: { id: true } },
@@ -87,7 +77,6 @@ interface RawPost {
   editedAt?: Date | null
   deletedAt?: Date | null
   author: SafeUser
-  chemicals: SafeChemical[]
   quotedPost?: RawPost | null
   parent?: { author: { username: string } } | null
   likes?: RelationArr
@@ -95,7 +84,7 @@ interface RawPost {
   bookmarks?: RelationArr
 }
 
-export function serializePost(p: RawPost): SafePost {
+export function serializePost(p: RawPost): CorePost {
   return {
     id: p.id,
     shortCode: p.shortCode ?? null,
@@ -106,7 +95,6 @@ export function serializePost(p: RawPost): SafePost {
     content: p.content,
     quotePostId: p.quotePostId ?? null,
     quotedPost: p.quotedPost ? serializePost(p.quotedPost as RawPost) : null,
-    chemicals: p.chemicals ?? [],
     images: p.images ?? [],
     views: p.views,
     createdAt: p.createdAt,

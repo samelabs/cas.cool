@@ -5,10 +5,35 @@
 
 import { prisma } from '@/lib/db'
 import { Prisma } from '@prisma/client'
+import { isCanonicalTimestamp } from '@/lib/pagination'
 import { userSelect, serializeUser } from '@/lib/serialize'
 import type { SafeNotification } from '@/lib/types'
 
 const PAGE_SIZE = 30
+
+/** Raised by `getNotificationsPage` for a cursor this service could never
+ *  have emitted. Callers map it to a standard 400 — it must never reach
+ *  Prisma (where an unvalidated cursor becomes `new Date("Invalid Date")`
+ *  → 500). */
+export class InvalidNotificationCursorError extends Error {
+  constructor() {
+    super('Invalid cursor.')
+    this.name = 'InvalidNotificationCursorError'
+  }
+}
+
+/** Cursor shape this service emits: `<canonical ISO ms>|<id>` (see
+ *  getNotificationsFirstPage). Anything else is client garbage. */
+export function validateNotificationCursor(cursor: string): { createdAt: Date; id: string } {
+  const parts = cursor.split('|')
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new InvalidNotificationCursorError()
+  }
+  if (!isCanonicalTimestamp(parts[0])) {
+    throw new InvalidNotificationCursorError()
+  }
+  return { createdAt: new Date(parts[0]), id: parts[1] }
+}
 
 export interface NotificationPage {
   notifications: SafeNotification[]
@@ -85,12 +110,14 @@ export async function getNotificationsPage(
 ): Promise<NotificationPage> {
   let cursorWhere: Prisma.NotificationWhereInput | undefined
   if (cursor) {
-    const [iso, id] = cursor.split('|')
-    const cursorDate = new Date(iso)
+    // Validate BEFORE the query: same canonical keyset contract as the
+    // timeline cursors. An unparseable cursor must surface as a 400 from
+    // the caller, never as a Prisma Invalid-Date 500.
+    const parsed = validateNotificationCursor(cursor)
     cursorWhere = {
       OR: [
-        { createdAt: { lt: cursorDate } },
-        { createdAt: cursorDate, id: { lt: id } },
+        { createdAt: { lt: parsed.createdAt } },
+        { createdAt: parsed.createdAt, id: { lt: parsed.id } },
       ],
     }
   }

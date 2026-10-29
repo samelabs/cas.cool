@@ -56,16 +56,33 @@ async function isReferenced(url: string): Promise<boolean> {
 }
 
 /**
+ * Throwing removal primitive used by the side-effect outbox: unlike
+ * `deleteUnreferencedUploads` below, real failures propagate so the
+ * executor can record them as a retryable pending task. A file that is
+ * already gone (ENOENT) counts as success — the goal state is reached.
+ */
+export async function removeUnreferencedUpload(url: string): Promise<void> {
+  const name = uploadFilename(url)
+  if (!name) return
+  const pathUrl = `/uploads/${name}`
+  if (await isReferenced(pathUrl)) return
+  try {
+    await unlink(path.join(UPLOAD_DIR, name))
+  } catch (e: unknown) {
+    if (e instanceof Error && 'code' in e && e.code === 'ENOENT') return
+    throw e
+  }
+}
+
+/**
  * Delete the given /uploads/... URLs if nothing references them.
  * Safe to call with duplicates and with URLs that were never files.
  */
 export async function deleteUnreferencedUploads(urls: string[]): Promise<void> {
   const unique = [...new Set(urls)].map(uploadFilename).filter((n): n is string => !!n)
   for (const name of unique) {
-    const url = `/uploads/${name}`
     try {
-      if (await isReferenced(url)) continue
-      await unlink(path.join(UPLOAD_DIR, name))
+      await removeUnreferencedUpload(`/uploads/${name}`)
     } catch {
       // Missing file or transient error — nothing to do; a later run
       // (or nothing) will revisit. Cleanup must never throw upward.

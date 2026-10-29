@@ -19,6 +19,9 @@ function jsonError(status: number, code: string, message: string) {
 export async function POST(request: NextRequest) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.response
+  if (auth.identity.method !== 'session') {
+    return jsonError(403, 'forbidden', 'Password changes require a browser session.')
+  }
   const limited = checkRateLimit(auth.identity, 'write')
   if (limited) return limited
 

@@ -11,7 +11,7 @@ import { getTimelinePage } from '@/lib/services/post.service'
 import { jsonLdScript } from '@/lib/utils'
 import type { Metadata } from 'next'
 
-import { SITE_URL } from '@/lib/site'
+import { getSiteConfig } from '@/lib/site'
 const CAS_VALIDATE = /^\d{2,7}-\d{2}-\d$/
 
 export async function generateMetadata({
@@ -29,12 +29,13 @@ export async function generateMetadata({
   })
 
   const primaryName = chemical?.name?.split(';')[0]?.trim() || null
-  const url = `${SITE_URL}/cas/${decoded}`
+  const site = await getSiteConfig()
+  const url = `${site.origin}/cas/${decoded}`
 
   const descriptionParts = [
     primaryName ? `${primaryName} (CAS ${decoded})` : `CAS Registry Number ${decoded}`,
     chemical?.postCount ? `${chemical.postCount} ${chemical.postCount === 1 ? 'post' : 'posts'}` : null,
-    'discussions, properties, and community knowledge on CAS.cool',
+    `discussions, properties, and community knowledge on ${site.name}`,
   ].filter(Boolean)
   const description = descriptionParts.join(' · ').slice(0, 160)
 
@@ -49,7 +50,7 @@ export async function generateMetadata({
       title: primaryName ? `${primaryName} — CAS ${decoded}` : `CAS ${decoded}`,
       description,
       url,
-      siteName: t.seo.siteName,
+      siteName: site.name,
       type: 'article',
     },
     twitter: {
@@ -96,7 +97,7 @@ export default async function CASPage({
     '@type': 'ChemicalSubstance',
     identifier: `CAS ${decoded}`,
     name: primaryName || decoded,
-    url: `${SITE_URL}/cas/${decoded}`,
+    url: `${(await getSiteConfig()).origin}/cas/${decoded}`,
     ...(names.length > 1 ? { alternateName: names.slice(1).join(', ') } : {}),
     ...(chemical?.smiles ? { smiles: chemical.smiles } : {}),
     ...(totalPosts > 0 ? { commentCount: totalPosts } : {}),

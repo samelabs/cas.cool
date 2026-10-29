@@ -7,7 +7,7 @@
 
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
-import { requireAuth, requireWrite } from '@/lib/api-auth'
+import { requireAuth, requireWrite, writeAccessError } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 
 function jsonError(status: number, code: string, message: string) {
@@ -64,7 +64,10 @@ export async function GET(
 
   // Mark received messages as read (mirror of page semantics).
   const receivedIds = messages.filter((m) => m.receiverId === user.id && m.readAt === null).map((m) => m.id)
-  if (receivedIds.length > 0) {
+  // A programmatic caller without write permission may inspect a conversation
+  // but must not change its read receipts. Browser sessions and verified keys
+  // keep the existing behavior.
+  if (receivedIds.length > 0 && writeAccessError(auth.identity) === null) {
     await prisma.directMessage.updateMany({
       where: { id: { in: receivedIds } },
       data: { readAt: new Date() },

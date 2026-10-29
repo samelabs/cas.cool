@@ -9,7 +9,7 @@ import { prisma } from '@/lib/db'
 import { requireWrite } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 
-export async function POST(request: NextRequest) {
+export async function POST(_request: NextRequest) {
   const auth = await requireWrite()
   if (!auth.ok) return auth.response
 

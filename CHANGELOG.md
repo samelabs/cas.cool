@@ -4,6 +4,49 @@ All notable changes to CAS.cool are documented here.
 The open-source release is v1.0.0. The production site runs an iterative
 version (1.1.x) where x increments with each deploy.
 
+## [1.2.0] — 2026-10-29
+
+- MCP server at `/mcp` (Streamable HTTP, JSON-RPC 2.0, official SDK
+  transport): 12 agent tools — 7 read (`get_capabilities`, `list_posts`,
+  `get_post`, `get_post_discussion`, `search_posts`, `get_chemical`,
+  `get_profile`) and 5 write (`create_post`, `edit_post`, `delete_post`,
+  `set_interaction`, `set_follow`) — registered per caller in
+  `tools/list` according to server-side capability.
+- API keys are unified identity credentials across REST and MCP. The
+  `ApiKey.access` column is retired: capabilities derive dynamically from
+  account standing (active + current verification → write; unverified or
+  restricted → read-only; suspended → 401). Invalid Bearer credentials
+  never fall back to a session cookie.
+- Concurrency hardening in the shared service layer (applies to REST and
+  MCP alike): the follow service locks both User rows in one canonical
+  order (fixes P2034 deadlocks on mutual follow/unfollow); the chemical
+  product write layer canonicalizes CAS ordering and takes per-CAS
+  advisory admission locks before row locks (fixes opposed-order deadlocks
+  and lost-create P2002 races on fresh CAS numbers across create, edit
+  and delete).
+- Pagination contracts closed: ancestor continuation is only via the
+  HMAC-signed, target-bound opaque `nextAncestorCursor` (bare IDs and
+  foreign tokens rejected on both REST and MCP, root posts included);
+  `GET /api/notifications` validates its cursor and answers a standard
+  400 for malformed input instead of 500.
+- Side-effect outbox with SKIP LOCKED claims and persistent notification
+  delivery records (dedupe by `eventKey`); executable report-resolution
+  SQL.
+- Ancestor chain pagination through soft-deleted boundary posts with
+  independent ancestor/reply cursors; web post detail loads earlier
+  context without losing scroll position.
+- Dependency and toolchain: `@hono/node-server` 2.1.5, `brace-expansion`
+  1.1.21/5.0.12, `browserslist` 4.29.5, `js-yaml` 4.3.2 (full
+  `npm audit` and `npm audit --omit=dev` both report 0); Node engines
+  narrowed to `^22.12.0 || ^24.0.0 || >=26.0.0` — the exact intersection
+  with the ranges Prisma 7 and Vitest 5 actually support (Node 23 and 25
+  are excluded).
+- Quality gates: rate-limit tests rewritten as bounded true bursts with
+  exact token-bucket math pinned by controlled-clock unit tests; the
+  50k-sitemap boundary test carries an explicit per-test budget and
+  verified fixture cleanup; migration test startup surfaces the schema
+  engine's own diagnostics.
+
 ## [1.1.7] — 2026-08-29
 
 - Fix: mobile menu drawer collapsed to header height — the sticky header's

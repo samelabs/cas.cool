@@ -5,7 +5,6 @@ export function extractCASNumber(text: string): string | null {
   const matches = text.match(CAS_REGEX)
   return matches && matches.length > 0 ? matches[0] : null
 }
-
 export function formatNumber(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
   if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
@@ -59,39 +58,3 @@ export function jsonLdScript(obj: unknown): string {
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029')
 }
-
-/**
- * Mention extraction — finds @username patterns in text.
- *
- * Rules:
- *  - @ must be at start of text OR preceded by whitespace/punctuation (not
- *    part of an email address or URL).
- *  - Username: [a-zA-Z0-9_], 1-20 chars (matches our username constraint).
- *  - Excludes emails: "user@domain.com" is NOT a mention because the @ is
- *    preceded by non-whitespace.
- *  - Excludes URLs: "https://x.com/@user" IS a mention (after the /), but
- *    "user@example.com" is NOT.
- *  - Capped at MAX_MENTIONS to prevent spam abuse.
- */
-export const MAX_MENTIONS = 5
-
-const MENTION_REGEX = /(?:^|[\s/(\[{:;,])(@)([a-zA-Z0-9_]{1,20})/g
-
-export function extractMentions(text: string): string[] {
-  const usernames = new Set<string>()
-  let match: RegExpExecArray | null
-  let count = 0
-  MENTION_REGEX.lastIndex = 0
-  while ((match = MENTION_REGEX.exec(text)) !== null && count < MAX_MENTIONS) {
-    usernames.add(match[2].toLowerCase())
-    count++
-  }
-  return [...usernames]
-}
-
-/**
- * Display regex for rendering @mentions as links in post content.
- * Same boundary rules as extractMentions, but captures the full @username
- * string (including the @ symbol) for link text.
- */
-export const MENTION_DISPLAY_RE = /(?:^|[\s/(\[{:;,])(@[a-zA-Z0-9_]{1,20})/g

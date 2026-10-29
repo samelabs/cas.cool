@@ -46,11 +46,5 @@ next-env.d.ts
 /public/uploads/
 /logs/
 
-# one-off audit snapshots (kept locally, not in VCS)
-/AUDIT.md
-scripts/migrate.py
-
-# Local development docs (not for VCS)
-AGENT.md
-AGENTS.md
-DEVLOG.md
+# scratch — rehearsal artifacts, local-only
+/.tmp/

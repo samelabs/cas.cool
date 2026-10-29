@@ -12,7 +12,6 @@ enum NotificationType {
   FOLLOW
   REPOST
   MESSAGE
-  MENTION
   REPORT_RESOLVED
 }
 
@@ -52,6 +51,18 @@ enum SubmissionStatus {
   pending
   approved
   rejected
+}
+
+
+/// Durable post-commit side effects (transactional outbox).
+enum SideEffectKind {
+  notification
+  upload_cleanup
+}
+
+enum SideEffectStatus {
+  pending
+  succeeded
 }
 
 model User {
@@ -115,13 +126,27 @@ model ApiKey {
   name        String                    // User-given label, e.g. "My chemistry bot"
   keyHash     String    @unique         // SHA-256 hex of raw key — indexed for O(1) lookup
   prefix      String                    // First 8 chars of random part for UI display
-  scopes      String[]  @default([])    // Reserved for future scope control (empty = all)
   lastUsedAt  DateTime?
   expiresAt   DateTime?                 // Optional expiry; null = no expiry
   revokedAt   DateTime?                 // Soft revoke; null = active
   createdAt   DateTime  @default(now())
 
   @@index([userId])
+}
+
+/// Single deployment identity. Feed and chemistry data stay independent of
+/// the hostname and public brand.
+model SiteConfig {
+  id          Int      @id
+  origin      String
+  name        String
+  shortName   String
+  keyPrefix   String
+  description String
+  tagline     String
+  analyticsId String?
+  githubUrl   String?
+  updatedAt   DateTime @updatedAt
 }
 
 /// Identity verification documents submitted by users for admin review.
@@ -196,7 +221,8 @@ model Post {
 
   likes        Like[]
   bookmarks    Bookmark[]
-  reposts      Repost[]
+  reposts      Repost[]   @relation("PostReposts")
+  repost       Repost?    @relation("RepostGeneratedPost")
   reports      Report[]   @relation("ReportedPost")
   postViews    PostView[]
   notifications Notification[]  @relation("NotificationPost")
@@ -255,12 +281,14 @@ model Bookmark {
 }
 
 model Repost {
-  id        String   @id @default(cuid())
-  postId    String
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  postId       String
+  post         Post     @relation("PostReposts", fields: [postId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repostPostId String   @unique
+  repostPost   Post     @relation("RepostGeneratedPost", fields: [repostPostId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
 
   @@unique([postId, userId])
   @@index([userId])
@@ -326,8 +354,13 @@ model Notification {
   type        NotificationType
   postId      String?
   post        Post?            @relation("NotificationPost", fields: [postId], references: [id], onDelete: Cascade)
+  // Set at row creation for outbox events. Informational only — the dedup
+  // authority for events is the immutable NotificationDelivery record.
+  eventKey    String?          @unique
   read        Boolean          @default(false)
   createdAt   DateTime         @default(now())
+
+  deliveries  NotificationDelivery[]
 
   @@index([userId, read])
   @@index([userId, type])
@@ -379,4 +412,44 @@ model PostView {
 
   @@unique([postId, userId])
   @@index([userId])
+}
+
+/// Persistent per-event delivery record — the idempotency authority for
+/// outbox notifications. Written in the SAME transaction as the visible
+/// notification change and NEVER updated or overwritten by later events,
+/// so a retry of an OLD event after a NEWER one is a pure no-op (it cannot
+/// touch eventKey/read/createdAt). Survives notification-row deletion
+/// (SetNull), so dedup holds even after the visible row is cascade-removed.
+model NotificationDelivery {
+  eventKey       String        @id
+  notification   Notification? @relation(fields: [notificationId], references: [id], onDelete: SetNull)
+  notificationId String?
+  deliveredAt    DateTime      @default(now())
+
+  @@index([notificationId])
+}
+
+/// Transactional outbox: rows are written in the SAME transaction as the
+/// state change they belong to (e.g. report resolution); execution runs
+/// after commit, best-effort. Drains CLAIM rows atomically (claimToken +
+/// 60 s lease) so concurrent executors — post-commit auto-drain and the
+/// admin retry endpoint — never double-execute a task, and a process that
+/// dies mid-execution has its task re-claimed after the lease expires.
+/// A failed execution stays `pending` with `attempts`/`lastError`, making
+/// the failure trackable and retryable via POST /api/admin/side-effects/retry
+/// — a committed resolution never returns a retryable 500 for a side-effect
+/// failure.
+model SideEffectTask {
+  id         String            @id @default(cuid())
+  kind       SideEffectKind
+  payload    Json
+  status     SideEffectStatus @default(pending)
+  attempts   Int               @default(0)
+  lastError  String?
+  claimToken String?
+  claimedAt  DateTime?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  @@index([status, createdAt])
 }

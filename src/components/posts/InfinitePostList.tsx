@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { t } from '@/lib/i18n'
 import Link from 'next/link'
 import useSWRInfinite from 'swr/infinite'
-import { SWRConfig } from 'swr'
+import { SWRInfiniteSeed } from '@/components/posts/SWRInfiniteSeed'
+import { useBrowseScroll } from '@/components/posts/BrowseStateProvider'
 import { PostCard } from '@/components/posts/PostCard'
 import { FlaskIcon } from '@/components/icons'
 import { postUrl } from '@/lib/shortCode'
@@ -114,6 +115,12 @@ function InfinitePostListInner({
     return hiddenIds.size > 0 ? all.filter((p) => !hiddenIds.has(p.id)) : all
   }, [data, initialPosts, hiddenIds])
 
+  // Browse-state lifecycle: scroll position is saved under this list's
+  // basePath while visible and restored on back-navigation once the cached
+  // pages make the document tall enough (identity-owned; cleared on
+  // logout/login).
+  useBrowseScroll(basePath, posts.length)
+
   const lastPage = data?.[data.length - 1]
   const MAX_PAGES = 50 // 1000 posts — prevents unbounded DOM growth
   const reachingEnd =
@@ -199,24 +206,25 @@ function InfinitePostListInner({
  *
  * Wraps `useSWRInfinite` with an IntersectionObserver sentinel for
  * scroll-triggered pagination. The first page is seeded from SSR data
- * via `SWRConfig` fallback so the initial render is instant and
- * hydratable. Each instance's `basePath` naturally forms a unique SWR
- * cache key, so different pages (tag, CAS, profile) never collide.
+ * into the identity-owned browse cache (only when absent) so the initial
+ * render is instant and hydratable; on back-navigation the same cache
+ * restores the pages and cursors the user already loaded. Each instance's
+ * `basePath` forms a unique SWR cache key.
  */
 export function InfinitePostList(props: InfinitePostListProps) {
   const { basePath, initialPosts, initialNextCursor } = props
 
-  const fallback = useMemo(
-    () => ({
-      [basePath]: { posts: initialPosts, nextCursor: initialNextCursor } as Page,
-    }),
-    [basePath, initialPosts, initialNextCursor],
+  const firstPage = useMemo<Page>(
+    () => ({ posts: initialPosts, nextCursor: initialNextCursor }),
+    [initialPosts, initialNextCursor],
   )
 
   return (
-    <SWRConfig value={{ fallback }}>
-      <InfinitePostListInner {...props} />
-    </SWRConfig>
+    <SWRInfiniteSeed cacheKey={basePath} page={firstPage}>
+      {/* Route search-param changes can reuse this wrapper. Keep each SWR
+          infinite instance on one basePath for its entire lifetime. */}
+      <InfinitePostListInner key={basePath} {...props} />
+    </SWRInfiniteSeed>
   )
 }
 

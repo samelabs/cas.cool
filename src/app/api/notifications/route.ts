@@ -10,7 +10,15 @@
 import { NextRequest } from 'next/server'
 import { requireAuth } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { getNotificationsPage, getUnreadNotificationCount } from '@/lib/services/notify.service'
+import {
+  getNotificationsPage,
+  getUnreadNotificationCount,
+  InvalidNotificationCursorError,
+} from '@/lib/services/notify.service'
+
+function jsonError(status: number, code: string, message: string) {
+  return Response.json({ error: { code, message } }, { status })
+}
 
 export async function GET(request: NextRequest) {
   const auth = await requireAuth()
@@ -21,14 +29,21 @@ export async function GET(request: NextRequest) {
 
   const cursor = request.nextUrl.searchParams.get('cursor') ?? undefined
 
-  const [page, unreadCount] = await Promise.all([
-    getNotificationsPage(auth.identity.user!.id, cursor),
-    getUnreadNotificationCount(auth.identity.user!.id),
-  ])
+  try {
+    const [page, unreadCount] = await Promise.all([
+      getNotificationsPage(auth.identity.user!.id, cursor),
+      getUnreadNotificationCount(auth.identity.user!.id),
+    ])
 
-  return Response.json({
-    notifications: page.notifications,
-    nextCursor: page.nextCursor,
-    unreadCount,
-  })
+    return Response.json({
+      notifications: page.notifications,
+      nextCursor: page.nextCursor,
+      unreadCount,
+    })
+  } catch (e: unknown) {
+    if (e instanceof InvalidNotificationCursorError) {
+      return jsonError(400, 'bad_request', e.message)
+    }
+    throw e
+  }
 }

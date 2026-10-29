@@ -14,8 +14,6 @@ import {
 import type { SafeUser } from '@/lib/types'
 
 export function SettingsHub({ user }: { user: SafeUser }) {
-  const isVerified = user.verificationStatus === 'verified'
-
   const cards = [
     {
       href: '/settings/profile',
@@ -34,7 +32,6 @@ export function SettingsHub({ user }: { user: SafeUser }) {
       Icon: SettingsIcon,
       title: t.api.title,
       desc: t.api.description,
-      verifiedOnly: true,
     },
   ]
 
@@ -71,7 +68,6 @@ export function SettingsHub({ user }: { user: SafeUser }) {
       {/* Settings cards */}
       <div className="space-y-2">
         {cards.map((card) => {
-          const locked = card.verifiedOnly && !isVerified
           return (
             <Link
               key={card.href}
@@ -87,11 +83,6 @@ export function SettingsHub({ user }: { user: SafeUser }) {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-ink">{card.title}</span>
-                  {locked && (
-                    <span className="rounded-full bg-warning-tint px-2 py-0.5 text-xs font-medium text-warning">
-                      {t.api.verificationRequired}
-                    </span>
-                  )}
                 </div>
                 <p className="mt-0.5 text-sm text-ink-muted line-clamp-2">{card.desc}</p>
               </div>

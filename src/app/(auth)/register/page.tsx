@@ -5,7 +5,7 @@ import { t } from '@/lib/i18n'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/Button'
-import { useAuth } from '@/components/Providers'
+import { useAuth, useSite } from '@/components/Providers'
 import { useToast } from '@/components/ui/Toast'
 import { sanitizeUsername } from '@/lib/utils'
 import { get, post } from '@/lib/api-client'
@@ -14,6 +14,7 @@ import type { SafeUser } from '@/lib/types'
 type CheckState = 'idle' | 'checking' | 'taken' | 'free'
 
 export default function RegisterPage() {
+  const site = useSite()
   const router = useRouter()
   const { login: setAuthUser } = useAuth()
   const { showToast } = useToast()
@@ -94,7 +95,7 @@ export default function RegisterPage() {
       })
       if (!result.ok) throw new Error(result.error || t.auth.errRegisterFailed)
       setAuthUser(result.data!.user)
-      showToast(t.auth.accountCreated, 'success', 2500)
+      showToast(`Account created — welcome to ${site.name}`, 'success', 2500)
       router.push(`/u/${username}`)
       router.refresh()
     } catch (err) {
@@ -119,9 +120,9 @@ export default function RegisterPage() {
   return (
     <div>
       <div className="mb-8 text-center">
-        <h1 className="text-2xl font-extrabold text-ink">{t.auth.registerTitle}</h1>
+        <h1 className="text-2xl font-extrabold text-ink">Join {site.name}</h1>
         <p className="mt-1 text-sm text-ink-faint">
-          {t.auth.registerSubtitle}
+          {site.tagline}
         </p>
       </div>
 

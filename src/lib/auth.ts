@@ -4,8 +4,8 @@ import { cookies } from 'next/headers'
 import { cache } from 'react'
 import { prisma } from './db'
 import { userSelect } from './serialize'
+import { SESSION_COOKIE } from './session-constants'
 
-const SESSION_COOKIE = 'cas_session'
 const SESSION_DURATION = 30 * 24 * 60 * 60 * 1000 // 30 days
 
 // Lazy-load secret (must be text, not Buffer, for jose)

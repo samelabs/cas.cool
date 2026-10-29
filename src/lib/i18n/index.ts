@@ -1,5 +1,5 @@
 /**
- * CAS.cool i18n entry point.
+ * Feed UI English dictionary entry point.
  *
  * Currently exports the English baseline as `t`.
  * Future locale support: add a locale resolver here that picks
