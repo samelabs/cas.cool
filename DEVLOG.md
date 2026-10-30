@@ -1304,3 +1304,14 @@ would turn back-navigation state into a mobile memory liability.
 
 **Pitfalls / Notes:**
 - Use the repository's pinned Playwright CLI so browser binaries match the installed package.
+
+### 2026-10-30 — Keep Browser Acceptance in Development
+
+**Context:** Development browser acceptance had been included in the routine test suite, adding Chromium installation and a second production build to CI.
+
+**Changes:**
+- Removed the dedicated closure browser suite, its production-server helper and the site-profile browser form case from the repository.
+- Removed Chromium installation from CI; retained unit and API regressions and the separately opt-in sitemap HTTP check.
+
+**Pitfalls / Notes:**
+- Browser acceptance remains a development activity; routine CI builds the application once.

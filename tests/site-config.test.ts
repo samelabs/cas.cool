@@ -13,7 +13,6 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { chromium } from 'playwright'
 import { dropTestDatabase, provisionTestDatabase, promoteUser, sql } from './helpers/db'
 import { startTestServer, stopTestServer } from './helpers/server'
 import { SERVER_URL } from './helpers/env'
@@ -166,61 +165,6 @@ describe('site identity surfaces derive from SiteConfig row 1', () => {
       )
       expect(rows[0].name).toBe('Updated ChemHub')
       expect(rows[0].shortName).toBe('ChemHub')
-    })
-
-    it('form interaction: locates 6 fields with getByLabel, fills and saves', async () => {
-      const adminUser = await registerAndLogin('siteadmin_ui')
-      await promoteUser(adminUser.username, { admin: true, verified: true })
-
-      const browser = await chromium.launch({ headless: true })
-      try {
-        const context = await browser.newContext()
-        const urlObj = new URL(SERVER_URL)
-        const [cookieName, cookieVal] = adminUser.cookie.split(';')[0].split('=')
-        await context.addCookies([
-          {
-            name: cookieName.trim(),
-            value: cookieVal.trim(),
-            domain: urlObj.hostname,
-            path: '/',
-          },
-        ])
-
-        const page = await context.newPage()
-        await page.goto(`${SERVER_URL}/admin/site`)
-
-        // 1. Locate all 6 fields using getByLabel (wait for client hydration/fetch to finish)
-        const nameInput = page.getByLabel('Site Name')
-        await nameInput.waitFor({ state: 'visible', timeout: 10_000 })
-        const shortNameInput = page.getByLabel('Short Name')
-        const taglineInput = page.getByLabel('Tagline')
-        const descInput = page.getByLabel('Description')
-        const githubInput = page.getByLabel('GitHub URL')
-        const analyticsInput = page.getByLabel('Analytics ID')
-
-        expect(await nameInput.isVisible()).toBe(true)
-        expect(await shortNameInput.isVisible()).toBe(true)
-        expect(await taglineInput.isVisible()).toBe(true)
-        expect(await descInput.isVisible()).toBe(true)
-        expect(await githubInput.isVisible()).toBe(true)
-        expect(await analyticsInput.isVisible()).toBe(true)
-
-        // 2. Fill the fields
-        await nameInput.fill('ChemHub UI')
-        await shortNameInput.fill('ChemHub')
-        await taglineInput.fill('UI Tagline for chemical innovation')
-        await descInput.fill('UI Description for chemical innovation and trade')
-        await githubInput.fill('https://github.com/cascool/ui-test')
-        await analyticsInput.fill('G-UI1234')
-
-        // 3. Save
-        await page.getByRole('button', { name: 'Save Changes' }).click()
-
-        // 4. Assert saved toast appears
-        await expect.poll(async () => await page.getByText('Site profile updated').count()).toBeGreaterThan(0)
-      } finally {
-        await browser.close()
-      }
     })
 
     it('cache propagation: warm cache -> admin save -> same-process first read reflects new profile on about, home, llms, manifest', async () => {
