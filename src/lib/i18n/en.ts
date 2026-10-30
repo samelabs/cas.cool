@@ -39,8 +39,6 @@ export const en = {
     save: 'Save',
     delete: 'Delete',
     search: 'Search',
-    posts: (count: number) =>
-      `${count} ${count === 1 ? 'post' : 'posts'}`,
     editedAt: (time: string) => `Edited ${time}`,
     moreOptions: 'More options',
     uploading: 'Uploading…',
@@ -60,6 +58,14 @@ export const en = {
     next: 'Next',
     imageViewer: 'Image viewer',
     post: 'Post',
+    logout: 'Log out',
+    showMore: 'Show more',
+    retry: 'Try again',
+    imageCounter: (current: number, total: number) => `Image ${current} of ${total}`,
+    postsCount: (count: number, formatted?: string) => {
+      const display = formatted ?? count.toLocaleString('en-US')
+      return count === 1 ? `${display} post` : `${display} posts`
+    },
   },
 
   // ─── Auth ──────────────────────────────────────────────
@@ -98,6 +104,11 @@ export const en = {
     usernameHint: 'Letters, numbers and underscores.',
     // Sign out
     signedOut: 'Signed out',
+    signUp: 'Sign up',
+    signInTo: (name: string) => `Sign in to ${name}`,
+    join: (name: string) => `Join ${name}`,
+    newTo: (name: string) => `New to ${name}?`,
+    welcomeTo: (name: string) => `Account created — welcome to ${name}`,
   },
 
   // ─── Compose ───────────────────────────────────────────
@@ -126,6 +137,7 @@ export const en = {
     postUpdated: 'Post updated',
     failedToPost: 'Failed to post',
     failedToEdit: 'Failed to save edit',
+    reply: 'Reply',
   },
 
   // ─── Post Actions ──────────────────────────────────────
@@ -161,12 +173,14 @@ export const en = {
 
   // ─── Share ─────────────────────────────────────────────
   share: {
+    weibo: 'Weibo',
   },
 
   // ─── Post Card ─────────────────────────────────────────
   postCard: {
     reposted: 'Reposted',
     quoted: 'Quoted',
+    replyingTo: 'Replying to',
     cas: (casNumber: string) => `CAS ${casNumber}`,
     viewImage: 'View image',
     postImage: 'Post image',
@@ -188,6 +202,9 @@ export const en = {
     nothingHereYet: 'Nothing here yet',
     endOfFeed: "You're all caught up",
     newPostsAvailable: 'New posts available',
+    loadingEarlier: 'Loading earlier posts…',
+    showEarlier: 'Show earlier posts',
+    signInToReply: 'to reply and join the conversation.',
   },
 
   // ─── Profile ───────────────────────────────────────────
@@ -202,6 +219,9 @@ export const en = {
     unfollowed: 'Unfollowed',
     pleaseSignInToFollow: 'Please sign in to follow people.',
     requestFailed: 'Request failed',
+    joined: (date: string) => `Joined ${date}`,
+    metaStats: (posts: number, followers: number) =>
+      `${posts === 1 ? '1 post' : `${posts} posts`} · ${followers === 1 ? '1 follower' : `${followers} followers`}`,
     tabs: {
       posts: 'Posts',
       replies: 'Replies',
@@ -222,6 +242,7 @@ export const en = {
     send: 'Send',
     youPrefix: 'You: ',
     conversationDeleted: (name: string) => `Conversation with ${name} deleted.`,
+    deleteConversationWith: (name: string) => `Delete conversation with ${name}`,
     failedToDelete: 'Failed to delete conversation.',
     messageFailed: 'Message could not be sent.',
     replyPlaceholder: 'Post your reply',
@@ -347,6 +368,8 @@ export const en = {
     submittedInfo: 'Submitted Information',
     legalName: 'Legal name',
     idNumber: 'ID number',
+    idFrontDoc: 'ID document — front side',
+    idBackDoc: 'ID document — back side',
     // Panel
     submitDocs: 'Submit Verification Documents',
     completeDocs: 'Complete Verification Documents',
@@ -403,6 +426,7 @@ export const en = {
       verifications: 'Verifications',
       users: 'Users',
       reports: 'Reports',
+      site: 'Site Profile',
     },
     // Reports
     pending: 'Pending',
@@ -419,7 +443,15 @@ export const en = {
     userReport: 'User report',
     reportedUser: 'Reported user:',
     reportedBy: 'Reported by',
+    noText: '(no text)',
+    handledBy: (username: string) => `by @${username}`,
+    reportStatuses: {
+      PENDING: 'Pending',
+      RESOLVED: 'Resolved',
+      DISMISSED: 'Dismissed',
+    } as Record<string, string>,
     actions: {
+      deletePost: 'Delete post',
       suspendUser: 'Suspend user',
       warnOnly: 'Warn only',
       dismiss: 'Dismiss',
@@ -433,6 +465,7 @@ export const en = {
     searchHint: 'Search by username or pick a status filter',
     verifyBtn: 'Verify',
     verifiedBtn: '✓ Verified',
+    statusChangedTo: (status: string) => `Status changed to ${status}`,
     // Verifications
     verificationsLoadFailed: 'Failed to load',
     noSubmissions: 'No submissions',
@@ -450,18 +483,50 @@ export const en = {
     rejectFailed: 'Failed to reject',
     approvedPrefix: '✓ Approved',
     rejectedPrefix: '✗ Rejected',
+    approvedOn: (date: string) => `✓ Approved on ${date}`,
+    rejectedOn: (date: string) => `✗ Rejected on ${date}`,
     onDate: (date: string) => `on ${date}`,
     noteLabel: (note: string) => `Note: ${note}`,
     expiresLabel: (date: string) => `Expires: ${date}`,
     idFront: 'ID front',
     idBack: 'ID back',
+    // Site Profile
+    siteProfile: {
+      title: 'Site Profile',
+      description: 'Manage public brand identity and presentation parameters.',
+      name: 'Site Name',
+      shortName: 'Short Name',
+      tagline: 'Tagline',
+      siteDescription: 'Description',
+      analyticsId: 'Analytics ID',
+      githubUrl: 'GitHub URL',
+      origin: 'Origin URL',
+      keyPrefix: 'API Key Prefix',
+      originNotice: 'Origin and API key prefix are managed via deployment and database migration.',
+      saveChanges: 'Save Changes',
+      savedToast: 'Site profile updated',
+      saveFailed: 'Failed to update site profile',
+      loadFailed: 'Failed to load site profile',
+      validation: {
+        invalidJson: 'Invalid JSON.',
+        nameRequired: 'Site name must be between 1 and 50 characters.',
+        shortNameRequired: 'Short name must be between 1 and 30 characters.',
+        taglineRequired: 'Tagline must be between 1 and 200 characters.',
+        descriptionRequired: 'Description must be between 1 and 500 characters.',
+        analyticsIdTooLong: 'Analytics ID must be under 100 characters.',
+        invalidAnalyticsId: 'Invalid analytics ID.',
+        invalidGithubUrl: 'GitHub URL must use http or https.',
+        invalidUrl: 'Invalid GitHub URL.',
+        githubUrlType: 'Invalid GitHub URL.',
+        rowMissing: 'Site configuration row 1 missing.',
+      },
+    },
   },
 
   // ─── About ─────────────────────────────────────────────
   about: {
     title: 'About',
-    description:
-      'An open-source web app built with Next.js, React, and PostgreSQL. Source code is publicly available on GitHub.',
+    whatIs: (name: string) => `What is ${name}?`,
     features: 'Features',
     casNumbered: 'CAS-Numbered Posts',
     casNumberedDesc: 'Tag any post with a CAS Registry Number to link it to a specific chemical compound.',
@@ -478,6 +543,9 @@ export const en = {
   errors: {
     somethingWrong: 'Something went wrong',
     unexpectedError: 'An unexpected error occurred. Please try again.',
+    pageLoadError: 'An error occurred while loading this page.',
+    errorId: (id: string) => `Error ID: ${id}`,
+    tryAgain: 'Try again',
     notFound404: '404',
     notFoundMessage: "This page doesn't exist or may have been removed.",
     backToHome: 'Back to home',
@@ -491,6 +559,8 @@ export const en = {
   api: {
     title: 'API Keys & MCP',
     description: 'Unified credentials for REST API and Model Context Protocol (MCP) access.',
+    effectiveCapability: 'Effective capability:',
+    verifyLink: 'Verify',
     createKey: 'Create new key',
     keyNamePlaceholder: 'e.g. My chemistry bot',
     unifiedKey: 'Unified API Key',
@@ -515,6 +585,29 @@ export const en = {
     mcpEndpoint: 'MCP Endpoint',
     mcpConfigExample: 'Client configuration example',
     copyConfig: 'Copy config',
+    restTitle: 'REST API',
+    restDescription: 'Use your API key to authenticate REST API requests. Both REST and MCP share the same unified key and dynamic permission model.',
+    restAuthHeader: 'Authentication Header',
+    restExampleTitle: 'Example Request',
+    restDocsLink: 'API and MCP guide',
+    copyCurl: 'Copy curl command',
+  },
+
+  // ─── CAS / Chemicals ────────────────────────────────────
+  cas: {
+    smilesAvailable: 'SMILES available',
+    smilesAvailableWithDot: '· SMILES available',
+    metaDiscussions: (siteName: string) => `discussions, properties, and community knowledge on ${siteName}`,
+    casRegistryNumber: (cas: string) => `CAS Registry Number ${cas}`,
+    primaryCasName: (name: string, cas: string) => `${name} (CAS ${cas})`,
+  },
+
+  // ─── Time ───────────────────────────────────────────────
+  time: {
+    now: 'now',
+    minutesAgo: (m: number) => `${m}m`,
+    hoursAgo: (h: number) => `${h}h`,
+    daysAgo: (d: number) => `${d}d`,
   },
 
   // ─── SEO / Meta ────────────────────────────────────────
@@ -525,8 +618,6 @@ export const en = {
     ],
     // Home page
     homeTitle: 'Discover & Share Chemical Knowledge',
-    homeDescription:
-      'Discover and share chemicals. Explore compounds by CAS Registry Number, share knowledge, and connect with the chemistry community.',
     // Dynamic pages
     postNotFound: 'Post not found',
     postWithCas: (author: string, cas: string) => `${author} posted CAS ${cas}`,

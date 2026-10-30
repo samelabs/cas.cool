@@ -136,7 +136,7 @@ export default function ConversationList({
                 void handleDelete(id, displayName)
               }}
               className="shrink-0 rounded-full p-1.5 text-ink-faint transition-colors hover:bg-danger-tint hover:text-danger"
-              aria-label={`Delete conversation with ${displayName}`}
+              aria-label={t.messages.deleteConversationWith(displayName)}
             >
               <TrashIcon className="h-4 w-4" />
             </button>

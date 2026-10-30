@@ -41,12 +41,12 @@ export default async function HomePage({
   return (
     <>
       {/*
-       * Header — Twitter-style on mobile:
+       * Header below the sidebar's md breakpoint:
        *   [avatar]    [centered logo]    [spacer]
        * Avatar opens MobileMenuDrawer (slide-in panel with full nav).
-       * On desktop (md+), logo is left-aligned (sidebar handles navigation).
+       * At md and above, the sidebar supplies the brand and navigation.
        */}
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur-md">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur-md md:hidden">
         <div className="flex h-[53px] items-center px-4">
           {me ? (
             <div className="md:hidden">
@@ -58,8 +58,8 @@ export default async function HomePage({
             <div className="md:hidden w-9" />
           )}
 
-          {/* Logo: centered on mobile, left on desktop */}
-          <div className="flex flex-1 justify-center md:justify-start">
+          {/* Centered brand while the sidebar is hidden. */}
+          <div className="flex flex-1 justify-center">
             <Link href="/" className="flex items-center gap-1.5">
               <FlaskIcon className="h-5 w-5 text-brand" />
               <span className="text-lg font-extrabold tracking-tight text-brand">

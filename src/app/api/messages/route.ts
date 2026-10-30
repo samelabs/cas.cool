@@ -7,7 +7,7 @@
 
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
-import { upsertNotification } from '@/lib/notification'
+import { enqueueSideEffects, drainEnqueuedSideEffects } from '@/lib/services/side-effect.service'
 import { canDirectMessage } from '@/lib/permissions'
 import { requireWrite } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
@@ -49,20 +49,30 @@ export async function POST(request: NextRequest) {
   }
 
   const [user1Id, user2Id] = [user.id, recipientId].sort()
-  const result = await prisma.$transaction(async (tx) => {
+  const { conversation, taskIds } = await prisma.$transaction(async (tx) => {
     const conv = await tx.conversation.upsert({
       where: { user1Id_user2Id: { user1Id, user2Id } },
       create: { user1Id, user2Id },
       update: { lastAt: new Date(), deletedBy1: false, deletedBy2: false },
       select: { id: true },
     })
-    await tx.directMessage.create({
+    const message = await tx.directMessage.create({
       data: { conversationId: conv.id, senderId: user.id, receiverId: recipientId, content },
     })
-    return conv
+    const taskIds = await enqueueSideEffects(tx, [{
+      kind: 'notification',
+      payload: {
+        userId: recipientId,
+        fromId: user.id,
+        type: 'MESSAGE',
+        eventKey: `message:${message.id}`,
+      },
+    }])
+    return { conversation: conv, taskIds }
   })
 
-  await upsertNotification({ userId: recipientId, fromId: user.id, type: 'MESSAGE' })
+  // Post-commit delivery — failures stay pending on the outbox task.
+  await drainEnqueuedSideEffects(taskIds)
 
-  return Response.json({ conversationId: result.id }, { status: 201 })
+  return Response.json({ conversationId: conversation.id }, { status: 201 })
 }

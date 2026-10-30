@@ -221,8 +221,8 @@ export default function AdminVerificationsPage() {
               {sub.status !== 'pending' && sub.reviewedAt && (
                 <div className="mb-3 rounded-lg bg-canvas px-3 py-2 text-sm text-ink-muted">
                   {sub.status === 'approved'
-                    ? t.admin.approvedPrefix + ' ' + t.admin.onDate(fmtDate(sub.reviewedAt))
-                    : t.admin.rejectedPrefix + ' ' + t.admin.onDate(fmtDate(sub.reviewedAt))}
+                    ? t.admin.approvedOn(fmtDate(sub.reviewedAt))
+                    : t.admin.rejectedOn(fmtDate(sub.reviewedAt))}
                   {sub.reviewNote && <span className="block text-ink-faint">{t.admin.noteLabel(sub.reviewNote)}</span>}
                   {sub.expiresAt && <span className="block text-ink-faint">{t.admin.expiresLabel(fmtDate(sub.expiresAt))}</span>}
                 </div>

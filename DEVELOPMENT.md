@@ -150,9 +150,15 @@ pm2 startOrReload ecosystem.config.cjs
 
 PM2 runs the Next.js process from the application directory (`ecosystem.config.cjs` uses `__dirname` without hardcoded system paths). Nginx (reference templates and setup guide in `deploy/`) terminates TLS, forwards client IP headers (`X-Real-IP`, `X-Forwarded-For`), and serves `/_next/static/` and `/uploads/` directly. Dynamic `/llms.txt` proxies to Next.js. Logs live in `logs/` (gitignored).
 
+Keep `private-uploads/` in persistent storage across releases and include it
+in backups. During the closure release window, pause writes and handle legacy
+public verification files once: establish their private ownership records,
+update references, remove public copies and clear any cached public URLs,
+then verify owner/admin reads before reopening writes.
+
 ## Never commit
 
-`.env`, `public/uploads/`, `logs/`, `node_modules/` — all gitignored; keep
+`.env`, `public/uploads/`, `private-uploads/`, `logs/`, `node_modules/` — all gitignored; keep
 it that way.
 
 ## Documentation to keep in sync

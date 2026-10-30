@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
 import { useCurrentUser } from '@/components/Providers'
@@ -39,6 +39,20 @@ export default function FollowButton({
   const [pending, setPending] = useState(false)
   // Armed = showing the "tap again to unfollow" confirm state (mobile)
   const [armed, setArmed] = useState(false)
+
+  // Server-props convergence: the follow state of record lives on the
+  // server; when a fresh prop arrives (e.g. this component's own
+  // router.refresh(), or another view's refresh re-rendering us), converge
+  // instead of keeping the useState initial snapshot. In-flight optimistic
+  // toggles HOLD the incoming prop (the ref is not advanced while pending)
+  // so the newest server truth applies when the action settles.
+  const lastInitialRef = useRef(initialFollowing)
+  useEffect(() => {
+    if (pending) return
+    const prev = lastInitialRef.current
+    lastInitialRef.current = initialFollowing
+    if (prev !== initialFollowing) setFollowing(initialFollowing)
+  }, [initialFollowing, pending])
 
   // Auto-disarm after 3 seconds so a stray tap doesn't linger
   useEffect(() => {

@@ -15,10 +15,13 @@
  */
 
 import { NextRequest } from 'next/server'
-import { processAndStoreImage, MAX_RAW_BYTES, type UploadPurpose } from '@/lib/image'
+import path from 'node:path'
+import { unlink } from 'node:fs/promises'
+import { processAndStoreImage, PRIVATE_UPLOAD_DIR, MAX_RAW_BYTES, type UploadPurpose } from '@/lib/image'
 import { requireWrite } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { canUploadMedia } from '@/lib/permissions'
+import { prisma } from '@/lib/db'
 
 export async function POST(request: NextRequest) {
   // 1. Auth + permission
@@ -86,6 +89,25 @@ export async function POST(request: NextRequest) {
       { error: { code: 'invalid_file', message: 'File is not a valid image.' } },
       { status: 422 },
     )
+  }
+
+  // Private verification attachments: record ownership so the applicant can
+  // preview before submitting (the gated media route checks this record).
+  // If the record fails, remove the file rather than leave an unownable
+  // attachment behind.
+  if (result.storage === 'private') {
+    try {
+      await prisma.privateMedia.create({
+        data: { filename: result.filename, userId: auth.identity.user!.id },
+      })
+    } catch (e: unknown) {
+      await unlink(path.join(PRIVATE_UPLOAD_DIR, result.filename)).catch(() => {})
+      console.error('[upload] private media ownership record failed:', e)
+      return Response.json(
+        { error: { code: 'internal_error', message: 'Upload could not be recorded.' } },
+        { status: 500 },
+      )
+    }
   }
 
   return Response.json(

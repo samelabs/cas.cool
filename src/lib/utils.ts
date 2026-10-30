@@ -1,3 +1,5 @@
+import { t } from '@/lib/i18n'
+
 // CAS Registry Number extraction: e.g. "50-00-0", "64-17-5"
 const CAS_REGEX = /\b(\d{2,7})-(\d{2})-(\d)\b/
 
@@ -16,13 +18,13 @@ export function timeAgo(date: Date | string): string {
   const now = new Date()
   const seconds = Math.floor((now.getTime() - d.getTime()) / 1000)
 
-  if (seconds < 60) return 'now'
+  if (seconds < 60) return t.time.now
   const minutes = Math.floor(seconds / 60)
-  if (minutes < 60) return `${minutes}m`
+  if (minutes < 60) return t.time.minutesAgo(minutes)
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${hours}h`
+  if (hours < 24) return t.time.hoursAgo(hours)
   const days = Math.floor(hours / 24)
-  if (days < 7) return `${days}d`
+  if (days < 7) return t.time.daysAgo(days)
 
   // Same year: "Jun 5"  ·  Different year: "Jun 5, 2024"
   if (d.getFullYear() === now.getFullYear()) {

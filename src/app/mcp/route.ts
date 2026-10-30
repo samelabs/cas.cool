@@ -5,7 +5,8 @@
  * Protocol: JSON-RPC 2.0 over Streamable HTTP (stateless, per-request lifecycle).
  */
 
-import { NextRequest } from 'next/server'
+import { after, NextRequest } from 'next/server'
+import { drainEnqueuedSideEffects } from '@/lib/services/side-effect.service'
 import { resolveIdentity } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { getSiteConfig } from '@/lib/site'
@@ -224,6 +225,7 @@ export async function POST(request: NextRequest) {
   const rateLimitTier = isWriteTool ? 'write' : 'read'
   const limited = checkRateLimit(identity, rateLimitTier)
   if (limited) return limited
+  after(async () => { await drainEnqueuedSideEffects([]) })
 
   // ── 6. Execute via isolated Server & Transport ───────────────
   const { server, transport } = await createMcpServerForRequest(identity)

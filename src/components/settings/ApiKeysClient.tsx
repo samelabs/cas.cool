@@ -37,9 +37,11 @@ export function ApiKeysClient({
   const [revokingId, setRevokingId] = useState<string | null>(null)
   const [copiedKey, setCopiedKey] = useState(false)
   const [copiedMcp, setCopiedMcp] = useState(false)
+  const [copiedCurl, setCopiedCurl] = useState(false)
   const [canProgrammaticWrite, setCanProgrammaticWrite] = useState(verificationStatus === 'verified')
 
   const mcpUrl = `${site.origin}/mcp`
+  const exampleCurl = `curl -H "Authorization: Bearer YOUR_API_KEY" "${site.origin}/api/posts"`
   const exampleMcpConfig = JSON.stringify(
     {
       mcpServers: {
@@ -173,6 +175,16 @@ export function ApiKeysClient({
     }
   }
 
+  const handleCopyCurl = async () => {
+    try {
+      await navigator.clipboard.writeText(exampleCurl)
+      setCopiedCurl(true)
+      setTimeout(() => setCopiedCurl(false), 2000)
+    } catch {
+      showToast(t.postMenu.copyFailed, 'error')
+    }
+  }
+
   const formatDate = (date: Date | string | null) => {
     if (!date) return t.api.never
     return new Date(date).toLocaleDateString(undefined, {
@@ -188,7 +200,7 @@ export function ApiKeysClient({
 
       {/* Dynamic capability status badge */}
       <div className="mb-6 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface p-3 text-sm">
-        <span className="font-medium text-ink">Effective capability:</span>
+        <span className="font-medium text-ink">{t.api.effectiveCapability}</span>
         <span
           className={cn(
             'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold',
@@ -201,7 +213,7 @@ export function ApiKeysClient({
           <span className="text-xs text-ink-muted">
             ({t.api.verificationNotice}{' '}
             <Link href="/verify" className="font-medium text-brand underline">
-              Verify
+              {t.api.verifyLink}
             </Link>
             )
           </span>
@@ -267,6 +279,44 @@ export function ApiKeysClient({
           </div>
         </div>
       )}
+
+      {/* REST API Integration Section */}
+      <div className="mb-6 rounded-xl border border-line bg-surface p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-ink">{t.api.restTitle}</h3>
+            <p className="mt-1 text-xs text-ink-muted">{t.api.restDescription}</p>
+          </div>
+          <Link
+            href="/llms.txt"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="shrink-0 text-xs font-medium text-brand hover:underline"
+          >
+            {t.api.restDocsLink}
+          </Link>
+        </div>
+        <div className="mt-3">
+          <span className="text-xs font-medium text-ink-muted">{t.api.restAuthHeader}</span>
+          <code className="mt-1 block rounded-lg bg-surface-hover px-3 py-2 text-xs font-mono text-ink">
+            Authorization: Bearer YOUR_API_KEY
+          </code>
+        </div>
+        <div className="mt-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-ink-muted">{t.api.restExampleTitle}</span>
+            <button
+              onClick={handleCopyCurl}
+              className="text-xs font-medium text-brand hover:underline"
+            >
+              {copiedCurl ? t.api.rawKeyCopied : t.api.copyCurl}
+            </button>
+          </div>
+          <pre className="mt-1 overflow-x-auto rounded-lg bg-surface-hover p-3 text-xs font-mono text-ink">
+            {exampleCurl}
+          </pre>
+        </div>
+      </div>
 
       {/* MCP Integration Section */}
       <div className="mb-6 rounded-xl border border-line bg-surface p-4">

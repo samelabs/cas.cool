@@ -395,7 +395,7 @@ export function PostDetailClient({
                 disabled={isLoadingEarlier}
                 className="inline-flex items-center gap-2 text-sm font-semibold text-brand hover:text-brand-strong transition-colors min-h-[44px] touch-manipulation cursor-pointer disabled:opacity-50"
               >
-                {isLoadingEarlier ? 'Loading earlier posts…' : 'Show earlier posts'}
+                {isLoadingEarlier ? t.feed.loadingEarlier : t.feed.showEarlier}
               </button>
             </div>
           )}
@@ -451,7 +451,7 @@ export function PostDetailClient({
           </div>
         ) : (
           <div className="border-b border-line bg-brand-tint/40 px-4 py-3 text-center text-sm text-ink-muted">
-            <Link href="/login" className="font-semibold text-brand hover:underline">{t.common.signIn}</Link> to reply and join the conversation.
+            <Link href="/login" className="font-semibold text-brand hover:underline">{t.common.signIn}</Link> {t.feed.signInToReply}
           </div>
         )}
 

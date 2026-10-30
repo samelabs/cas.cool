@@ -219,3 +219,63 @@ export async function drainSideEffects(opts: {
   const pending = await prisma.sideEffectTask.count({ where: { status: 'pending' } })
   return { attempted, succeeded, failed: failedTasks.length, pending, failedTasks }
 }
+
+/** Per-process throttle for the no-event opportunistic progress below. */
+const OPPORTUNISTIC_INTERVAL_MS = 30_000
+let lastOpportunisticAt = 0
+
+/**
+ * Post-commit drain for the tasks a request just enqueued (normal path:
+ * delivered within the same request). If ANY pending backlog remains
+ * anywhere in the outbox afterwards — e.g. a task whose targeted drain
+ * failed earlier, or one left by a process that died right after its
+ * commit — one bounded extra batch is drained here, so the queue keeps
+ * moving under ordinary traffic without waiting for an admin.
+ *
+ * Event-free progress: even when THIS request enqueued nothing (taskIds
+ * empty), a throttled (per process, 30 s) bounded check+drain runs, so a
+ * committed backlog recovers under ordinary read/no-notification traffic
+ * without requiring a new notification event. Never throws: the caller's
+ * committed business result must not become a retryable 500 because of a
+ * side-effect failure. Failures stay `pending` with attempts/lastError and
+ * are re-driven by later drains or the admin retry endpoint.
+ */
+export async function drainEnqueuedSideEffects(
+  taskIds: string[],
+  limit = 20,
+): Promise<DrainResult | null> {
+  if (taskIds.length === 0) {
+    // No new event of our own; make bounded, throttled progress on any
+    // committed backlog anyway.
+    const now = Date.now()
+    if (now - lastOpportunisticAt < OPPORTUNISTIC_INTERVAL_MS) return null
+    lastOpportunisticAt = now
+    try {
+      const pending = await prisma.sideEffectTask.count({ where: { status: 'pending' } })
+      if (pending === 0) return null
+      return await drainSideEffects({ limit })
+    } catch (e: unknown) {
+      console.error('[SideEffectOutbox] opportunistic drain crashed (tasks stay pending):', { error: e })
+      return null
+    }
+  }
+  try {
+    const result = await drainSideEffects({ ids: taskIds })
+    if (result.pending > 0) {
+      await drainSideEffects({ limit })
+    }
+    if (result.failed > 0) {
+      console.error('[SideEffectOutbox] post-commit drain left failures (pending retry):', {
+        taskIds,
+        failedTasks: result.failedTasks,
+      })
+    }
+    return result
+  } catch (e: unknown) {
+    console.error('[SideEffectOutbox] post-commit drain crashed (tasks stay pending):', {
+      taskIds,
+      error: e,
+    })
+    return null
+  }
+}

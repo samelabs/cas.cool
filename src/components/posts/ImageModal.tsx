@@ -146,7 +146,7 @@ export function ImageModal({ images, startIndex = 0, onClose }: ImageModalProps)
       <img
         key={images[index]}
         src={images[index]}
-        alt={`Image ${index + 1} of ${count}`}
+        alt={t.common.imageCounter(index + 1, count)}
         onClick={stop}
         className="max-h-[100dvh] max-w-[100vw] select-none object-contain [touch-action:pan-y]"
         draggable={false}

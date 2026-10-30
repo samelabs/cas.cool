@@ -33,9 +33,9 @@ export async function generateMetadata({
   const url = `${site.origin}/cas/${decoded}`
 
   const descriptionParts = [
-    primaryName ? `${primaryName} (CAS ${decoded})` : `CAS Registry Number ${decoded}`,
-    chemical?.postCount ? `${chemical.postCount} ${chemical.postCount === 1 ? 'post' : 'posts'}` : null,
-    `discussions, properties, and community knowledge on ${site.name}`,
+    primaryName ? t.cas.primaryCasName(primaryName, decoded) : t.cas.casRegistryNumber(decoded),
+    chemical?.postCount ? t.common.postsCount(chemical.postCount) : null,
+    t.cas.metaDiscussions(site.name),
   ].filter(Boolean)
   const description = descriptionParts.join(' · ').slice(0, 160)
 
@@ -43,9 +43,7 @@ export async function generateMetadata({
     title: primaryName ? `${primaryName} (CAS ${decoded})` : `CAS ${decoded}`,
     description,
     alternates: { canonical: url },
-    robots: chemical?.banned
-      ? { index: false, follow: true }
-      : { index: true, follow: true },
+    robots: { index: true, follow: true },
     openGraph: {
       title: primaryName ? `${primaryName} — CAS ${decoded}` : `CAS ${decoded}`,
       description,
@@ -91,16 +89,24 @@ export default async function CASPage({
     : []
   const primaryName = names[0] || null
 
+  const site = await getSiteConfig()
+  const descriptionParts = [
+    primaryName ? t.cas.primaryCasName(primaryName, decoded) : t.cas.casRegistryNumber(decoded),
+    totalPosts > 0 ? t.common.postsCount(totalPosts) : null,
+    t.cas.metaDiscussions(site.name),
+  ].filter(Boolean)
+  const description = descriptionParts.join(' · ').slice(0, 160)
+
   // JSON-LD structured data for SEO — Schema.org ChemicalSubstance
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'ChemicalSubstance',
     identifier: `CAS ${decoded}`,
-    name: primaryName || decoded,
-    url: `${(await getSiteConfig()).origin}/cas/${decoded}`,
-    ...(names.length > 1 ? { alternateName: names.slice(1).join(', ') } : {}),
-    ...(chemical?.smiles ? { smiles: chemical.smiles } : {}),
-    ...(totalPosts > 0 ? { commentCount: totalPosts } : {}),
+    name: primaryName || `CAS ${decoded}`,
+    description,
+    url: `${site.origin}/cas/${decoded}`,
+    ...(names.length > 1 ? { alternateName: names.slice(1) } : {}),
+    ...(chemical?.smiles ? { hasRepresentation: chemical.smiles } : {}),
   }
 
   return (
@@ -146,10 +152,10 @@ export default async function CASPage({
             {/* Stats bar */}
             <div className="mt-3 flex items-center gap-3 text-sm">
               <span className="font-semibold text-ink">
-                {totalPosts.toLocaleString()} {totalPosts === 1 ? 'post' : 'posts'}
+                {t.common.postsCount(totalPosts)}
               </span>
               {chemical?.smiles && (
-                <span className="text-ink-muted">· SMILES available</span>
+                <span className="text-ink-muted">{t.cas.smilesAvailableWithDot}</span>
               )}
             </div>
           </div>

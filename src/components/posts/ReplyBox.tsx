@@ -97,7 +97,7 @@ export default function ReplyBox({ parentId, onReply }: ReplyBoxProps) {
               disabled={!canSubmit}
               onClick={submit}
             >
-              Reply
+              {t.compose.reply}
             </Button>
           </div>
         </div>

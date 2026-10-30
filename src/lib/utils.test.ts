@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractCASNumber, jsonLdScript, sanitizeUsername } from './utils'
+import { extractCASNumber, formatNumber, jsonLdScript, sanitizeUsername, timeAgo } from './utils'
 
 describe('extractCASNumber', () => {
   it('extracts a valid CAS number from prose', () => {
@@ -28,5 +28,25 @@ describe('jsonLdScript', () => {
     expect(out).toContain('\\u003c')
     expect(out).toContain('\\u2028')
     expect(out).toContain('\\u2029')
+  })
+})
+
+describe('formatNumber', () => {
+  it('formats numbers compactly', () => {
+    expect(formatNumber(0)).toBe('0')
+    expect(formatNumber(999)).toBe('999')
+    expect(formatNumber(1000)).toBe('1.0K')
+    expect(formatNumber(1500)).toBe('1.5K')
+    expect(formatNumber(1000000)).toBe('1.0M')
+  })
+})
+
+describe('timeAgo', () => {
+  it('returns relative time tokens from i18n dictionary', () => {
+    const now = new Date()
+    expect(timeAgo(now)).toBe('now')
+    expect(timeAgo(new Date(now.getTime() - 120_000))).toBe('2m')
+    expect(timeAgo(new Date(now.getTime() - 7200_000))).toBe('2h')
+    expect(timeAgo(new Date(now.getTime() - 86400_000 * 3))).toBe('3d')
   })
 })

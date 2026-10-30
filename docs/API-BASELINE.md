@@ -66,7 +66,17 @@ Buckets live in process memory: they reset on restart and are per-process
   - `/api/admin/verifications`: cursor, `take` max 100, default 20
   - `/api/admin/users`: **page-based** (`?page=`, 50/page) — not cursor
   - `/api/admin/reports`: **no pagination** — latest 50 fixed + `pendingCount`
-  - `GET /api/messages/:id`: **poll semantics** — latest 50 messages, no cursor
+  - `GET /api/messages/:id`: **incremental poll semantics** — composite cursor
+    `?afterTs=<canonicalISO>&afterId=<messageId>`; returns messages strictly
+    after the `(createdAt, id)` boundary in `(createdAt, id)` order (max 50)
+    plus `hasMore` — callers advance with the last message's pair and drain
+    until `hasMore=false`. Missing/malformed `afterTs` → 400. Only the
+    received messages actually returned are confirmed read, and only for
+    callers with write permission. **History paging**: the same route with
+    `?beforeTs=<canonicalISO>&beforeId=<messageId>` returns the 50 messages
+    strictly BEFORE the composite boundary (chronological order, own
+    `hasMore`) — the thread UI's scroll-to-top continuation beyond the
+    most-recent first screen
 - **Post addressing**: URL paths address posts by **shortCode** (8-char
   base62, e.g. `/api/posts/Ab3xY9zK`). Creating replies/quotes addresses
   posts by **internal `id`** (`parentId` / `quotePostId` in the POST body).
@@ -111,15 +121,20 @@ unless noted.
 | `POST /api/account/api-keys` | user (session only) | write | Active members can create unified credentials (no `access` parameter). Max 5 active; concurrency protected by row lock on User; 201 includes `rawKey` (shown once) |
 | `DELETE /api/account/api-keys/:id` | user (session only) | write | Revoke own key. Programmatic API keys cannot manage API keys |
 | `POST /api/account/verification` | write | write | `{ idName, idNumber, idFrontImage, idBackImage }`; images from `purpose=verification` uploads; upsert (one active submission) |
-| `GET /api/notifications` | user | read | `{ notifications, nextCursor, unreadCount }`. `cursor` is the compound `<canonicalTimestamp>\|<id>` keyset emitted as `nextCursor`; malformed cursors return 400 `bad_request` (validated in the shared service before any query) |
-| `POST /api/notifications/read` | write | write | Marks all read |
+| `GET /api/media/verification/:filename` | user | read | Private attachment: upload-time owner, or admin reviewing a referencing submission. Other members receive 404. `private, no-store` |
+| `GET /api/notifications` | user | read | `{ notifications, nextCursor, unreadCount }`. `cursor` is the compound `<canonicalTimestamp>\|<id>` keyset emitted as `nextCursor`; malformed cursors return 400 `bad_request` (validated in the shared service before any query). Paging through the backlog NEVER confirms anything read |
+| `POST /api/notifications/read` | write | write | Explicit mark-ALL read (the only bulk read confirmation; page loads mark only their returned rows, guarded by the row revision they observed) |
+| `POST /api/notifications/ack` | write | write | Per-object versioned confirmation: `{ items: [{ id, revision }] }` (max 100). Revisions are integers from 0 through 2147483647; an invalid item rejects the entire batch with 400 before writes. Each item updates only its own row, only if still unread at the observed revision and owned by the caller. Returns `{ confirmed, unreadRemaining }` |
 | `POST /api/messages` | write | write | `{ recipientId, content }`; DM gating (below) |
-| `GET /api/messages/:id` | user | read | Poll a conversation. Programmatic caller without write permission can read without updating `readAt` |
+| `GET /api/messages/:id` | user | read | Incremental poll after the composite `(createdAt, id)` boundary; `hasMore` continuation. Programmatic caller without write permission can read without updating `readAt` |
 | `DELETE /api/messages/:id` | write | write | Per-side soft delete; when both sides deleted → permanent removal |
 | `POST /api/messages/:id/send` | write | write | `{ content }` |
 | `POST /mcp` | bearer | read/write | Model Context Protocol Streamable HTTP endpoint. Stateless JSON-RPC 2.0. Origin validated against `SiteConfig.origin`, 64KB max body, shared rate limiting, dynamic tool registration based on verification standing |
 | `POST /api/reports` | write | write | `{ targetType: POST\|USER, targetId, reason, detail? }` |
 | `GET /api/admin/users` | admin | read | `q`, `status`, `page` (page-based, 50/page) |
+| `GET /api/admin/site` | admin | read | Read SiteConfig row 1 |
+| `PATCH /api/admin/site` | admin | write | Update public profile fields; invalidate site caches. Origin and key prefix remain deployment-owned |
+| `POST /api/admin/uploads/sweep` | admin | write | Reclaim unreferenced uploads beyond 24 h; ownership expiry uses the same asset locks as verification submissions |
 | `PATCH /api/admin/users/:id` | admin | write | Status/role management |
 | `POST /api/admin/users/:id/verify` | admin | write | |
 | `POST /api/admin/users/:id/revoke-verification` | admin | write | Also rejects any pending submission |
@@ -220,11 +235,13 @@ Tools are dynamically registered in `tools/list` according to the caller's serve
 4. `get_post_discussion`: Read thread context (bounded ancestor reply chain and direct replies) for a post by shortCode with independent `ancestorCursor` and `cursor` pagination. Bounded recursive CTE walks parent pointers and traverses soft-deleted boundaries while preserving tombstones. `nextAncestorCursor` is the only token accepted by `ancestorCursor` to continue ancestor pagination: it is opaque, HMAC-signed, and bound to the target post, so tokens issued for another discussion — including legacy bare post IDs — are rejected with an error, for root posts exactly as for replies (a root post without a cursor returns an empty ancestor page). `oldestAncestorId` is boundary information only and is never a valid cursor.
 5. `search_posts`: Full-text post search across text and chemical CAS numbers with cursor pagination (verified callers only).
 6. `get_chemical`: Retrieve registered compound metadata and post count by CAS registry number.
-7. `get_profile`: Lookup public user profile, bio, follower/following counts, and verification standing.
+7. `get_profile`: Lookup public user profile, bio, follower/following counts, verification standing, and (for authenticated callers) `viewerRelationship` (`isYou` / `youFollow` / `followsYou`) so agents never probe the relationship with write operations.
+8. `list_notifications`: Read the caller's notification inbox, newest first, with actor + post shortCode context and `unreadCount` + `nextCursor`. Strictly read-only — nothing is marked read. Null-postId types dedupe atomically via a partial unique index; LIKE/REPOST/FOLLOW re-surfacing is subject to the 60-minute recipient cooldown (see ARCHITECTURE.md "Notification lifecycle").
 
 ### Write Tools (Gated: Active + Current Verification required)
-8. `create_post`: Publish a chemical post, reply, or quote. Supports CAS tags and up to 4 pre-uploaded images.
-9. `edit_post`: Modify content, tags, or attachments within the 60-minute window under post row lock. `images: undefined` preserves existing images; `images: []` clears all images; `images: [urls]` replaces images.
-10. `delete_post`: Soft-delete own post, preserving conversation trees via tombstones.
-11. `set_interaction`: Perform or undo likes, bookmarks, and reposts. Idempotent.
-12. `set_follow`: Follow or unfollow a user by username via shared follow service. Idempotent.
+9. `mark_notifications_read`: Explicitly mark ALL notifications read (mirror of `POST /api/notifications/read`).
+10. `create_post`: Publish a chemical post, reply, or quote. Supports CAS tags and up to 4 pre-uploaded images. Optional `clientRequestId` (8–64 chars, `[A-Za-z0-9_-]`): the key is arbitrated INSIDE the creation transaction (post, counters, CAS relations, outbox tasks and the key row commit or roll back together), binding one logical creation to one (caller, key) pair for 24 h — expiry is enforced at arbitration time. Same key + same content (concurrent or retried) yields exactly one post, with the loser/concurrent replay returning the committed original (`replayed: true`); same key + different content → tool error `request_key_conflict`; original deleted → `request_key_post_gone`. Without the key the call is non-idempotent; on an uncertain result verify via `list_posts(author=...)`/`get_post` instead of blindly re-sending. ALL business tool errors return structured `structuredContent.error` with a stable `code` (invalid_arguments, invalid_cursor, unauthorized, forbidden, not_found, request_key_conflict, request_key_post_gone, asset_gone, …) and, where useful, a `recovery` direction — these are MCP tool results, not HTTP status changes.
+11. `edit_post`: Modify content, tags, or attachments within the 60-minute window under post row lock. `images: undefined` preserves existing images; `images: []` clears all images; `images: [urls]` replaces images.
+12. `delete_post`: Soft-delete own post, preserving conversation trees via tombstones.
+13. `set_interaction`: Perform or undo likes, bookmarks, and reposts. Idempotent.
+14. `set_follow`: Follow or unfollow a user by username via shared follow service. Idempotent.

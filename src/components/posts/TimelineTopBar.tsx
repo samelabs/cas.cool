@@ -3,7 +3,8 @@
 import Link from 'next/link'
 import { ComposeBox } from '@/components/posts/ComposeBox'
 import { FlaskIcon } from '@/components/icons'
-import { useAuth } from '@/components/Providers'
+import { useAuth, useSite } from '@/components/Providers'
+import { t } from '@/lib/i18n'
 import type { SafePost } from '@/lib/types'
 
 /**
@@ -20,6 +21,7 @@ export default function TimelineTopBar({
   onPosted?: (post: SafePost) => void
 }) {
   const { currentUser } = useAuth()
+  const site = useSite()
 
   if (!currentUser) {
     return (
@@ -29,23 +31,23 @@ export default function TimelineTopBar({
             <FlaskIcon className="h-6 w-6 text-brand" />
           </div>
           <p className="text-base font-semibold leading-snug text-ink">
-            Discover and share chemistry.
+            {site.tagline}
           </p>
           <p className="-mt-1 text-xs leading-snug text-ink-muted">
-            CAS-numbered posts, member connections, real-time updates.
+            {site.description}
           </p>
           <div className="mt-1 flex w-full items-center gap-3">
             <Link
               href="/login"
               className="flex-1 rounded-full bg-surface py-2.5 text-center text-base font-bold text-brand ring-1 ring-brand/30 transition-colors hover:bg-brand-tint"
             >
-              Log in
+              {t.auth.signIn}
             </Link>
             <Link
               href="/register"
               className="flex-1 rounded-full bg-brand py-2.5 text-center text-base font-bold text-white transition-colors hover:bg-brand-strong"
             >
-              Sign up
+              {t.auth.signUp}
             </Link>
           </div>
         </div>

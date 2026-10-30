@@ -11,13 +11,13 @@ export default function GlobalError({ reset }: { error: Error & { digest?: strin
           <FlaskIcon className="mx-auto mb-4 h-12 w-12 text-brand" />
           <h1 className="mb-2 text-2xl font-bold">{t.errors.somethingWrong}</h1>
           <p className="mb-6 text-ink-muted">
-            An unexpected error occurred. Please try again.
+            {t.errors.unexpectedError}
           </p>
           <button
             onClick={reset}
             className="rounded-full bg-brand px-6 py-2.5 font-medium text-white transition-colors hover:bg-brand-strong"
           >
-            Try again
+            {t.common.retry}
           </button>
         </div>
       </body>

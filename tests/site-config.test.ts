@@ -13,9 +13,11 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { dropTestDatabase, provisionTestDatabase, sql } from './helpers/db'
+import { chromium } from 'playwright'
+import { dropTestDatabase, provisionTestDatabase, promoteUser, sql } from './helpers/db'
 import { startTestServer, stopTestServer } from './helpers/server'
 import { SERVER_URL } from './helpers/env'
+import { api, registerAndLogin } from './helpers/http'
 
 beforeAll(async () => {
   await provisionTestDatabase()
@@ -79,5 +81,203 @@ describe('site identity surfaces derive from SiteConfig row 1', () => {
     const html = await response.text()
     const header = html.match(/<header\b[\s\S]*?<\/header>/)?.[0]
     expect(header).toContain('Feed Example')
+  })
+
+  describe('Admin site profile management and cache revalidation', () => {
+    it('enforces authentication and admin role boundary on /api/admin/site', async () => {
+      // 1. Anonymous GET -> 401
+      const anonRes = await fetch(`${SERVER_URL}/api/admin/site`)
+      expect(anonRes.status).toBe(401)
+
+      // 2. Normal member GET -> 403
+      const member = await registerAndLogin('normalluser')
+      const memberRes = await api('/api/admin/site', { cookie: member.cookie })
+      expect(memberRes.status).toBe(403)
+
+      // 3. Normal member PATCH -> 403
+      const memberPatch = await api('/api/admin/site', {
+        method: 'PATCH',
+        cookie: member.cookie,
+        body: JSON.stringify({ name: 'Hacked' }),
+      })
+      expect(memberPatch.status).toBe(403)
+    })
+
+    it('validates input parameters on PATCH /api/admin/site', async () => {
+      const adminUser = await registerAndLogin('siteadmin')
+      await promoteUser(adminUser.username, { admin: true, verified: true })
+
+      // Empty name
+      const resEmpty = await api('/api/admin/site', {
+        method: 'PATCH',
+        cookie: adminUser.cookie,
+        body: JSON.stringify({ name: '', shortName: 'Short', tagline: 'Tag', description: 'Desc' }),
+      })
+      expect(resEmpty.status).toBe(400)
+
+      // Invalid GitHub URL
+      const resBadUrl = await api('/api/admin/site', {
+        method: 'PATCH',
+        cookie: adminUser.cookie,
+        body: JSON.stringify({
+          name: 'Valid Name',
+          shortName: 'Short',
+          tagline: 'Tag',
+          description: 'Desc',
+          githubUrl: 'not-a-valid-url',
+        }),
+      })
+      expect(resBadUrl.status).toBe(400)
+    })
+
+    it('allows admin to read and update site profile, invalidating cache immediately', async () => {
+      const adminUser = await registerAndLogin('siteadmin2')
+      await promoteUser(adminUser.username, { admin: true, verified: true })
+
+      // GET
+      const getRes = await api('/api/admin/site', { cookie: adminUser.cookie })
+      expect(getRes.status).toBe(200)
+      const getData = await getRes.json()
+      expect(getData.site.origin).toBe('https://cas.cool')
+      expect(getData.site.keyPrefix).toBe('cas_')
+
+      // PATCH
+      const patchRes = await api('/api/admin/site', {
+        method: 'PATCH',
+        cookie: adminUser.cookie,
+        body: JSON.stringify({
+          name: 'Updated ChemHub',
+          shortName: 'ChemHub',
+          tagline: 'Connect and explore chemical innovations.',
+          description: 'The updated global social platform for the chemical trade.',
+          githubUrl: 'https://github.com/cascool/cascool',
+        }),
+      })
+      expect(patchRes.status).toBe(200)
+      const patchData = await patchRes.json()
+      expect(patchData.site.name).toBe('Updated ChemHub')
+      expect(patchData.site.shortName).toBe('ChemHub')
+      expect(patchData.site.tagline).toBe('Connect and explore chemical innovations.')
+      expect(patchData.site.description).toBe('The updated global social platform for the chemical trade.')
+
+      // Direct database check
+      const rows = await sql<{ name: string; shortName: string }>(
+        'SELECT name, "shortName" FROM "SiteConfig" WHERE id = 1',
+      )
+      expect(rows[0].name).toBe('Updated ChemHub')
+      expect(rows[0].shortName).toBe('ChemHub')
+    })
+
+    it('form interaction: locates 6 fields with getByLabel, fills and saves', async () => {
+      const adminUser = await registerAndLogin('siteadmin_ui')
+      await promoteUser(adminUser.username, { admin: true, verified: true })
+
+      const browser = await chromium.launch({ headless: true })
+      try {
+        const context = await browser.newContext()
+        const urlObj = new URL(SERVER_URL)
+        const [cookieName, cookieVal] = adminUser.cookie.split(';')[0].split('=')
+        await context.addCookies([
+          {
+            name: cookieName.trim(),
+            value: cookieVal.trim(),
+            domain: urlObj.hostname,
+            path: '/',
+          },
+        ])
+
+        const page = await context.newPage()
+        await page.goto(`${SERVER_URL}/admin/site`)
+
+        // 1. Locate all 6 fields using getByLabel (wait for client hydration/fetch to finish)
+        const nameInput = page.getByLabel('Site Name')
+        await nameInput.waitFor({ state: 'visible', timeout: 10_000 })
+        const shortNameInput = page.getByLabel('Short Name')
+        const taglineInput = page.getByLabel('Tagline')
+        const descInput = page.getByLabel('Description')
+        const githubInput = page.getByLabel('GitHub URL')
+        const analyticsInput = page.getByLabel('Analytics ID')
+
+        expect(await nameInput.isVisible()).toBe(true)
+        expect(await shortNameInput.isVisible()).toBe(true)
+        expect(await taglineInput.isVisible()).toBe(true)
+        expect(await descInput.isVisible()).toBe(true)
+        expect(await githubInput.isVisible()).toBe(true)
+        expect(await analyticsInput.isVisible()).toBe(true)
+
+        // 2. Fill the fields
+        await nameInput.fill('ChemHub UI')
+        await shortNameInput.fill('ChemHub')
+        await taglineInput.fill('UI Tagline for chemical innovation')
+        await descInput.fill('UI Description for chemical innovation and trade')
+        await githubInput.fill('https://github.com/cascool/ui-test')
+        await analyticsInput.fill('G-UI1234')
+
+        // 3. Save
+        await page.getByRole('button', { name: 'Save Changes' }).click()
+
+        // 4. Assert saved toast appears
+        await expect.poll(async () => await page.getByText('Site profile updated').count()).toBeGreaterThan(0)
+      } finally {
+        await browser.close()
+      }
+    })
+
+    it('cache propagation: warm cache -> admin save -> same-process first read reflects new profile on about, home, llms, manifest', async () => {
+      // 1. 预热缓存 (Warm up cache)
+      const aboutWarm = await (await fetch(`${SERVER_URL}/about`)).text()
+      expect(aboutWarm).toContain('What is')
+      const homeWarm = await (await fetch(`${SERVER_URL}`)).text()
+      expect(homeWarm).toBeDefined()
+      const llmsWarm = await (await fetch(`${SERVER_URL}/llms.txt`)).text()
+      expect(llmsWarm).toContain('Base URL:')
+      const manifestWarm = await (await fetch(`${SERVER_URL}/manifest.webmanifest`)).json()
+      expect(manifestWarm).toHaveProperty('name')
+
+      // 2. 管理员保存 (Admin saves new profile via PATCH /api/admin/site)
+      const adminUser = await registerAndLogin('siteadmin_cache')
+      await promoteUser(adminUser.username, { admin: true, verified: true })
+
+      const newName = 'ChemStream Enterprise'
+      const newShort = 'ChemStream'
+      const newTagline = 'Real-time trade feeds for chemical professionals worldwide.'
+      const newDesc = 'The global social commerce network for verified chemical suppliers.'
+
+      const patchRes = await api('/api/admin/site', {
+        method: 'PATCH',
+        cookie: adminUser.cookie,
+        body: JSON.stringify({
+          name: newName,
+          shortName: newShort,
+          tagline: newTagline,
+          description: newDesc,
+          githubUrl: 'https://github.com/cascool/enterprise',
+        }),
+      })
+      expect(patchRes.status).toBe(200)
+
+      // 3. 同进程首次读取 (Same-process first read immediately after save)
+      // About: reads new description and new name
+      const aboutAfter = await (await fetch(`${SERVER_URL}/about`)).text()
+      expect(aboutAfter).toContain(newName)
+      expect(aboutAfter).toContain(newDesc)
+
+      // 首页 (Home): reads new tagline and name in timeline top bar / header
+      const homeAfter = await (await fetch(`${SERVER_URL}`)).text()
+      expect(homeAfter).toContain(newName)
+      expect(homeAfter).toContain(newTagline)
+
+      // llms.txt: reads new name in title
+      const llmsAfter = await (await fetch(`${SERVER_URL}/llms.txt`)).text()
+      expect(llmsAfter).toContain(`# ${newName}`)
+
+      // manifest.webmanifest: reads new name and short_name
+      const manifestAfter = (await (await fetch(`${SERVER_URL}/manifest.webmanifest`)).json()) as {
+        name: string
+        short_name: string
+      }
+      expect(manifestAfter.name).toBe(newName)
+      expect(manifestAfter.short_name).toBe(newShort)
+    })
   })
 })

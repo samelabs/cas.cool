@@ -65,12 +65,14 @@ export function BadgeProvider({
 
 /* ── Sync helpers — tiny client components placed on pages that mark-as-read ── */
 
-/** Placed on /notifications — clears the notification badge on mount. */
-export function NotificationBadgeSync() {
+/** Placed on /notifications — converges the badge to the SERVER-CONFIRMED
+ *  unread count after the page's scoped read-marking (rows not returned,
+ *  or re-activated after the page SELECT, stay unread and stay counted). */
+export function NotificationBadgeSync({ unreadRemaining = 0 }: { unreadRemaining?: number }) {
   const { setNotificationCount } = useBadges()
   useEffect(() => {
-    setNotificationCount(0)
-  }, [setNotificationCount])
+    setNotificationCount(unreadRemaining)
+  }, [setNotificationCount, unreadRemaining])
   return null
 }
 

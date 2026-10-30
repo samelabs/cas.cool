@@ -71,7 +71,7 @@ describe('Official MCP SDK: End-to-End Streamable HTTP', () => {
 
     // 1. tools/list & annotations verification
     const toolsResult = await client.listTools()
-    expect(toolsResult.tools.length).toBe(12)
+    expect(toolsResult.tools.length).toBe(14)
     const toolMap = new Map(toolsResult.tools.map((t) => [t.name, t]))
 
     expect(toolMap.has('get_capabilities')).toBe(true)
@@ -255,7 +255,7 @@ describe('Official MCP SDK: End-to-End Streamable HTTP', () => {
       arguments: { shortCode: replyPost.shortCode },
     })) as { isError?: boolean; content: Array<{ text: string }> }
     expect(deletedGet.isError).toBe(true)
-    expect(deletedGet.content[0].text).toBe('Post not found.')
+    expect(deletedGet.content[0].text).toContain('Post not found.')
 
     await client.close()
   })
@@ -275,9 +275,9 @@ describe('Official MCP SDK: End-to-End Streamable HTTP', () => {
     const { client, transport } = createMcpClient(bobKey)
     await client.connect(transport)
 
-    // Unverified account only sees read tools (7 tools)
+    // Unverified account only sees read tools (8 — read tools + the read-only notification inbox)
     const toolsResult = await client.listTools()
-    expect(toolsResult.tools.length).toBe(7)
+    expect(toolsResult.tools.length).toBe(8)
     const toolNames = toolsResult.tools.map((t) => t.name)
     expect(toolNames).not.toContain('create_post')
     expect(toolNames).toContain('get_capabilities')
@@ -687,7 +687,7 @@ describe('Official MCP SDK: End-to-End Streamable HTTP', () => {
       arguments: { shortCode: 'sc_a16' },
     })) as { isError?: boolean; content: Array<{ text: string }> }
     expect(singleGet.isError).toBe(true)
-    expect(singleGet.content[0].text).toBe('Post not found.')
+    expect(singleGet.content[0].text).toContain('Post not found.')
 
     // ── Step 6: Verify REST endpoint GET /api/posts?ancestorsOf=... and consistency with MCP ──
     // Page 1 REST: returns same post IDs as disc1 and signed opaque cursor

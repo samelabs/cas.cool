@@ -91,8 +91,12 @@ export async function getTimelinePage(params: TimelineQuery): Promise<FeedPage> 
   }
 
   // ── Likes tab ──
+  // Contract (unified with bookmarks and every ordinary feed): normal lists
+  // exclude soft-deleted posts IN SQL, before pagination. Tombstones exist
+  // only for direct post-detail access and conversation chains — a list's
+  // shape must not depend on which join happened to filter.
   if (params.likedBy) {
-    const likeWhere: Prisma.LikeWhereInput = { userId: params.likedBy }
+    const likeWhere: Prisma.LikeWhereInput = { userId: params.likedBy, post: { deletedAt: null } }
     if (cursor) {
       const [cursorDate, cursorId] = cursor.split('|')
       const d = new Date(cursorDate)

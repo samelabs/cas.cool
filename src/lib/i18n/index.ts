@@ -15,8 +15,8 @@
  *
  * Dynamic strings use function calls:
  *   t.profile.tabs.posts         → "Posts"
- *   t.common.posts(5)             → "5 posts"
- *   t.common.posts(1)             → "1 post"
+ *   t.common.postsCount(5)       → "5 posts"
+ *   t.common.postsCount(1)       → "1 post"
  *   t.seo.casTitle('64-17-5', 'Ethanol') → "CAS 64-17-5 — Ethanol"
  */
 

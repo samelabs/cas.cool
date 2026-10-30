@@ -7,7 +7,8 @@
  * Auth: required (session or API key).
  */
 
-import { NextRequest } from 'next/server'
+import { after, NextRequest } from 'next/server'
+import { drainEnqueuedSideEffects } from '@/lib/services/side-effect.service'
 import { requireAuth } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import {
@@ -26,6 +27,7 @@ export async function GET(request: NextRequest) {
 
   const limited = checkRateLimit(auth.identity, 'read')
   if (limited) return limited
+  after(async () => { await drainEnqueuedSideEffects([]) })
 
   const cursor = request.nextUrl.searchParams.get('cursor') ?? undefined
 
@@ -35,11 +37,10 @@ export async function GET(request: NextRequest) {
       getUnreadNotificationCount(auth.identity.user!.id),
     ])
 
-    return Response.json({
-      notifications: page.notifications,
-      nextCursor: page.nextCursor,
-      unreadCount,
-    })
+    return Response.json(
+      { notifications: page.notifications, nextCursor: page.nextCursor, unreadCount },
+      { headers: { 'Cache-Control': 'private, no-store' } },
+    )
   } catch (e: unknown) {
     if (e instanceof InvalidNotificationCursorError) {
       return jsonError(400, 'bad_request', e.message)

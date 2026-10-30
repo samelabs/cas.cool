@@ -45,4 +45,5 @@ jobs:
 
       # API contract tests provision their own throwaway database
       # (cascool_test) and boot `next dev` on port 3199.
+      - run: npx playwright install --with-deps chromium
       - run: npm test

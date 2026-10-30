@@ -41,7 +41,7 @@ export default function LoginPage() {
   return (
     <div>
       <div className="mb-8 text-center">
-        <h1 className="text-2xl font-extrabold text-ink">Sign in to {site.name}</h1>
+        <h1 className="text-2xl font-extrabold text-ink">{t.auth.signInTo(site.name)}</h1>
         <p className="mt-1 text-sm text-ink-faint">
           {site.tagline}
         </p>
@@ -88,7 +88,7 @@ export default function LoginPage() {
         </Button>
 
         <p className="text-center text-sm text-ink-faint">
-          New to {site.name}?{' '}
+          {t.auth.newTo(site.name)}{' '}
           <Link href="/register" className="font-semibold text-brand hover:underline">
             {t.auth.createAccount}
           </Link>

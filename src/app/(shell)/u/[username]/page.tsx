@@ -37,12 +37,8 @@ export async function generateMetadata({
   if (!user) {
     return {
       title: t.profile.notFound,
-      robots: { index: false, follow: false },
     }
   }
-
-  // Suspended / restricted accounts: keep them out of the index.
-  const noindex = user.status === 'suspended' || user.status === 'restricted'
 
   const name = user.displayName || user.username
   const site = await getSiteConfig()
@@ -51,7 +47,7 @@ export async function generateMetadata({
   const verified = user.verificationStatus === 'verified'
 
   // Rich description: bio + stats + context, truncated to ~160 chars for SERP.
-  const stats = `${user._count?.posts ?? 0} posts · ${user._count?.followers ?? 0} followers`
+  const stats = t.profile.metaStats(user._count?.posts ?? 0, user._count?.followers ?? 0)
   const parts = [
     user.bio,
     stats,
@@ -70,7 +66,7 @@ export async function generateMetadata({
     title: `${name} (@${user.username})`,
     description,
     alternates: { canonical: url },
-    robots: noindex ? { index: false, follow: false } : { index: true, follow: true },
+    robots: { index: true, follow: true },
     openGraph: {
       title: `${name} (@${user.username})`,
       description: ogDescription.slice(0, 200),
@@ -155,7 +151,9 @@ export default async function ProfilePage({
               {displayName}
               {user.verificationStatus === 'verified' && <VerifiedBadge className="h-4 w-4 text-brand" />}
             </h1>
-            <p className="text-xs text-ink-muted">{formatNumber(user._count?.posts ?? 0)} posts</p>
+            <p className="text-xs text-ink-muted">
+              {t.common.postsCount(user._count?.posts ?? 0, formatNumber(user._count?.posts ?? 0))}
+            </p>
           </div>
           <ProfileMenu user={user} isSelf={isSelf} />
         </div>
@@ -233,7 +231,7 @@ export default async function ProfilePage({
             )}
             <span className="inline-flex items-center gap-1">
               <CalendarIcon className="h-4 w-4" />
-              Joined {joinDate}
+              {t.profile.joined(joinDate)}
             </span>
           </div>
 

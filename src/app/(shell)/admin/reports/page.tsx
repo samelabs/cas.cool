@@ -208,7 +208,7 @@ export default function AdminReportsPage() {
                     r.status === 'RESOLVED' ? 'bg-success-tint text-success' :
                     'bg-surface-hover text-ink-muted',
                   )}>
-                    {r.status.toLowerCase()}
+                    {t.admin.reportStatuses[r.status] ?? r.status}
                   </span>
                 </div>
 
@@ -242,7 +242,7 @@ export default function AdminReportsPage() {
                       <span className="text-ink-faint">·</span>
                       <span className="text-ink-faint">{timeAgo(r.post.createdAt)}</span>
                     </div>
-                    <p className="text-sm text-ink line-clamp-2">{r.post.content || '(no text)'}</p>
+                    <p className="text-sm text-ink line-clamp-2">{r.post.content || t.admin.noText}</p>
                     {r.post.images.length > 0 && (
                       <div className="mt-1.5 flex gap-1">
                         {r.post.images.slice(0, 3).map((img, i) => (
@@ -275,7 +275,7 @@ export default function AdminReportsPage() {
                     r.reportedUser.status === 'restricted' ? 'bg-warning-tint text-warning' :
                     'bg-danger-tint text-danger',
                   )}>
-                    {r.reportedUser.status}
+                    {t.common[r.reportedUser.status as 'active' | 'restricted' | 'suspended'] ?? r.reportedUser.status}
                   </span>
                 </div>
 
@@ -290,7 +290,7 @@ export default function AdminReportsPage() {
                   {r.handledByUser && (
                     <>
                       <span>·</span>
-                      <span>by @{r.handledByUser.username}</span>
+                      <span>{t.admin.handledBy(r.handledByUser.username)}</span>
                     </>
                   )}
                 </div>
@@ -304,7 +304,7 @@ export default function AdminReportsPage() {
                         disabled={acting === r.id}
                         className="rounded-lg bg-danger px-3 py-1.5 text-xs font-bold text-white transition-colors hover:bg-danger-strong disabled:opacity-50"
                       >
-                        Delete post
+                        {t.admin.actions.deletePost}
                       </button>
                     )}
                     <button

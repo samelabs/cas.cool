@@ -92,7 +92,12 @@ export function CommentIcon(props: IconProps) {
   )
 }
 
-export function RepostIcon(props: IconProps) {
+export function RepostIcon({ filled: _filled, ...props }: IconProps) {
+  // `filled` is intentionally ignored (visual behavior unchanged): the raw
+  // boolean must not reach the svg as a non-boolean attribute — React warns
+  // and it participates in hydration diffs. HeartIcon/BookmarkIcon own the
+  // real filled-variant rendering.
+  void _filled
   return (
     <svg {...base(props)}>
       <path d="m17 2 4 4-4 4" />

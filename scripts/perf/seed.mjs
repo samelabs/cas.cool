@@ -34,9 +34,9 @@ const dbUrl = new URL(adminUrl)
 dbUrl.pathname = `/${DB_NAME}`
 const DB_URL = dbUrl.toString()
 
-const USERS = 20_000
-const POSTS = 800_000
-const REPLIES = 180_000
+const USERS = Number(process.env.PERF_USERS ?? 20_000)
+const POSTS = Number(process.env.PERF_POSTS ?? 800_000)
+const REPLIES = Number(process.env.PERF_REPLIES ?? 180_000)
 const CHEMICALS = 5_000
 const FOLLOWS_PER_USER = 30
 
@@ -126,8 +126,8 @@ async function main() {
     for (const k of keys) {
       const raw = `perf_key_${k}_${Date.now().toString(36)}`
       await c.query(
-        `INSERT INTO "ApiKey" (id, "userId", name, "keyHash", prefix, access, "createdAt")
-         VALUES ($1, 'perf-reader', $2, $3, $4, 'read', now())`,
+        `INSERT INTO "ApiKey" (id, "userId", name, "keyHash", prefix, "createdAt")
+         VALUES ($1, 'perf-reader', $2, $3, $4, now())`,
         [`k-${k}`, `perf-${k}`, createHash('sha256').update(raw).digest('hex'), raw.slice(0, 12)],
       )
       console.log(`        key ${k}: ${raw}`)
@@ -160,7 +160,7 @@ async function main() {
           'u-' || lpad(((g::bigint * 7919 % ${USERS}) + 1)::text, 8, '0'),
           NULL, NULL,
           repeat('x', 40 + (g % 6) * 60),
-          CASE WHEN g % 25 = 0 THEN 'p-' || lpad((g % 100000 + 1)::text, 9, '0') ELSE NULL END,
+          CASE WHEN g % 25 = 0 AND g > 1 THEN 'p-' || lpad((g - 1)::text, 9, '0') ELSE NULL END,
           CASE WHEN g % 12 = 0 THEN ARRAY['/uploads/seed.webp'] ELSE ARRAY[]::text[] END,
           (random() * 5000)::int,
           (random() * random() * 2000)::int,

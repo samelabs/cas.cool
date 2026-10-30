@@ -118,4 +118,12 @@ export interface SafeNotification {
   postShortCode?: string | null
   read: boolean
   createdAt: Date
+  /** Version observed at serialization time — the value read-ack endpoints
+   *  require, so a stale confirmation can never clear a re-activated row. */
+  revision: number
+  /** COMMENT notifications only: shortCode of THE REPLY that triggered the
+   *  notification (postId points at the parent). Lets the recipient — web
+   *  or agent — jump straight to the new reply instead of scanning the
+   *  parent's reply pages. Null when unknown. */
+  replyShortCode?: string | null
 }

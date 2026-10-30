@@ -1,6 +1,8 @@
 import 'server-only'
-import { unstable_cache } from 'next/cache'
+import { unstable_cache, revalidateTag, revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/db'
+
+export const SITE_CONFIG_TAG = 'site-config'
 
 /** Database-owned public identity. Cache for one hour, matching sitemap ISR. */
 export const getSiteConfig = unstable_cache(
@@ -26,5 +28,15 @@ export const getSiteConfig = unstable_cache(
     }
   },
   ['site-config'],
-  { revalidate: 3600 },
+  { revalidate: 3600, tags: [SITE_CONFIG_TAG] },
 )
+
+/** Invalidate cached site identity across data cache and page layouts. */
+export function revalidateSiteConfig() {
+  try {
+    revalidateTag(SITE_CONFIG_TAG, 'max')
+    revalidatePath('/', 'layout')
+  } catch (error) {
+    console.error('[SiteConfig] cache revalidation failed:', error)
+  }
+}

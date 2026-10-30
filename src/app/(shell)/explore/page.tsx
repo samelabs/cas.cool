@@ -108,7 +108,7 @@ export default async function ExplorePage({
                   </p>
                   {c.name && <p className="truncate text-sm text-ink-muted">{c.name}</p>}
                   <p className="mt-0.5 text-xs text-ink-muted">
-                    {c.postCount.toLocaleString()} posts
+                    {t.common.postsCount(c.postCount)}
                   </p>
                 </Link>
               ))}
@@ -135,7 +135,7 @@ export default async function ExplorePage({
                 {c.name && <p className="truncate text-sm text-ink-muted">{c.name}</p>}
               </div>
               <span className="shrink-0 text-xs text-ink-faint">
-                {c.postCount.toLocaleString()} posts
+                {t.common.postsCount(c.postCount)}
               </span>
             </Link>
           ))}

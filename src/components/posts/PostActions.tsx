@@ -197,6 +197,43 @@ export function PostActions({ post, hideComment = false, hideRepost = false }: P
   const [bookmarkCount, setBookmarkCount] = useState(post._count?.bookmarks ?? 0)
   const [bookmarkPending, setBookmarkPending] = useState(false)
 
+  // Server-props convergence: useState only consumes the INITIAL prop value,
+  // so fresh server props (SWR focus revalidation of the parent list, or a
+  // router.refresh()) never reached the local state and the controls stayed
+  // stale. Convergence rules:
+  //  - While ANY interaction is in flight, the optimistic state wins and the
+  //    incoming props are HELD (lastPropsRef is not advanced) — the next
+  //    effect run after the action settles applies the newest server truth
+  //    (no lost update), and one pending like cannot swallow unrelated
+  //    repost/bookmark/count changes.
+  //  - A different post id on the same component instance RESETS all local
+  //    state from props (no stale carry-over across identity change).
+  const lastPropsRef = useRef(post)
+  useEffect(() => {
+    const pending = likePending || repostPending || bookmarkPending
+    if (pending) return // hold: prev stays behind, latest props apply after settle
+    const prev = lastPropsRef.current
+    lastPropsRef.current = post
+    if (prev.id !== post.id) {
+      // Identity change on a reused instance: reinitialize from props.
+      setLiked(post.liked ?? false)
+      setLikeCount(post._count?.likes ?? 0)
+      setReposted(post.reposted ?? false)
+      setRepostCount(post._count?.reposts ?? 0)
+      setBookmarked(post.bookmarked ?? false)
+      setBookmarkCount(post._count?.bookmarks ?? 0)
+      return
+    }
+    if (prev.liked !== post.liked) setLiked(post.liked ?? false)
+    if (prev.reposted !== post.reposted) setReposted(post.reposted ?? false)
+    if (prev.bookmarked !== post.bookmarked) setBookmarked(post.bookmarked ?? false)
+    if (post._count) {
+      if ((prev._count?.likes ?? 0) !== (post._count.likes ?? 0)) setLikeCount(post._count.likes ?? 0)
+      if ((prev._count?.reposts ?? 0) !== (post._count.reposts ?? 0)) setRepostCount(post._count.reposts ?? 0)
+      if ((prev._count?.bookmarks ?? 0) !== (post._count.bookmarks ?? 0)) setBookmarkCount(post._count.bookmarks ?? 0)
+    }
+  }, [post, likePending, repostPending, bookmarkPending])
+
   /**
    * Sync interaction state into the SWR cache so that client-side navigation
    * back to the timeline (or any InfinitePostList) shows the updated counts.

@@ -34,7 +34,7 @@ function TrendingRow({ rank, item }: { rank: number; item: TrendingChemical }) {
         CAS {item.casNumber}
       </p>
       {item.name && <p className="truncate text-sm text-ink-muted">{item.name}</p>}
-      <p className="mt-0.5 text-xs text-ink-faint">{item.postCount.toLocaleString()} posts</p>
+      <p className="mt-0.5 text-xs text-ink-faint">{t.common.postsCount(item.postCount)}</p>
     </Link>
   )
 }
@@ -79,7 +79,7 @@ export async function RightPanel({ trending = [], suggestions = [] }: RightPanel
           href="/explore"
           className="block border-t border-line/50 px-4 py-3 text-sm text-brand hover:bg-surface-hover"
         >
-          Show more
+          {t.common.showMore}
         </Link>
       </section>
 
