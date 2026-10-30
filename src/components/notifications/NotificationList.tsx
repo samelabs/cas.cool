@@ -2,11 +2,12 @@
 
 import Link from 'next/link'
 import useSWRInfinite from 'swr/infinite'
-import { useRef, useEffect } from 'react'
+import { useCallback, useMemo, useRef, useEffect } from 'react'
 import { Avatar } from '@/components/ui/Avatar'
 import { VerifiedBadge, HeartIcon, CommentIcon, RepostIcon, MailIcon, UserIcon, FlaskIcon, ShieldIcon } from '@/components/icons'
 import { timeAgo } from '@/lib/utils'
 import { t } from '@/lib/i18n'
+import { SWRInfiniteSeed } from '@/components/posts/SWRInfiniteSeed'
 import type { SafeNotification, SafeUser } from '@/lib/types'
 
 const PAGE_SIZE = 30
@@ -39,9 +40,13 @@ function NotificationRow({ n }: { n: SafeNotification }) {
           ? `/u/${username}`
           : n.type === 'MESSAGE'
             ? '/messages'
-            : n.postId
-              ? (n.postShortCode ? `/p/${n.postShortCode}` : '/notifications')
-              : `/u/${username}`
+            : // A COMMENT notification opens the REPLY that triggered it
+              // (anchored discussion), falling back to the parent post.
+              n.replyShortCode
+                ? `/p/${n.replyShortCode}`
+                : n.postId
+                  ? (n.postShortCode ? `/p/${n.postShortCode}` : '/notifications')
+                  : `/u/${username}`
       }
       className="flex gap-3 border-b border-line px-4 py-3 transition-colors hover:bg-canvas/80 focus:outline-none"
     >
@@ -77,29 +82,93 @@ interface ApiResponse {
 }
 
 import { swrFetcher } from '@/lib/api-client'
+import { post as apiPost } from '@/lib/api-client'
+import { useBadges } from '@/components/BadgeProvider'
 
+/**
+ * Reusable cursor-based infinite notification list.
+ *
+ * Same contract as InfinitePostList: page 0 has a REAL key (/api/notifications)
+ * seeded from SSR via SWRInfiniteSeed, so the first page is a cache hit and
+ * every later page is a plain cursor fetch of the same data source. (The old
+ * null page-0 key disabled SWRInfinite's iteration entirely — no page after
+ * the first could ever load.)
+ */
 export default function NotificationList({ initialNotifications, initialCursor }: NotificationListProps) {
+  const basePath = '/api/notifications'
+  const firstPage = useMemo<ApiResponse>(
+    () => ({ notifications: initialNotifications, nextCursor: initialCursor }),
+    [initialNotifications, initialCursor],
+  )
+
+  return (
+    <SWRInfiniteSeed cacheKey={basePath} page={firstPage}>
+      <NotificationListInner initialNotifications={initialNotifications} />
+    </SWRInfiniteSeed>
+  )
+}
+
+function NotificationListInner({ initialNotifications }: { initialNotifications: SafeNotification[] }) {
+  const basePath = '/api/notifications'
   const sentinelRef = useRef<HTMLDivElement>(null)
+  const { setNotificationCount } = useBadges()
+
+  const getKey = useCallback(
+    (pageIndex: number, previousPageData: ApiResponse | null): string | null => {
+      if (pageIndex === 0) return basePath
+      if (!previousPageData || !previousPageData.nextCursor) return null
+      return `${basePath}?cursor=${encodeURIComponent(previousPageData.nextCursor)}`
+    },
+    [basePath],
+  )
 
   const { data, error, isValidating, setSize, size } = useSWRInfinite<ApiResponse>(
-    (pageIndex, previousPageData) => {
-      if (previousPageData && !previousPageData.notifications.length) return null
-      // Page 0 is SSR data (no fetch needed).
-      if (pageIndex === 0) return null
-      // Use cursor from previous page.
-      const cursor =
-        previousPageData?.nextCursor ??
-        initialCursor
-      return cursor ? `/api/notifications?cursor=${encodeURIComponent(cursor)}` : null
-    },
+    getKey,
     swrFetcher<ApiResponse>,
     { revalidateFirstPage: false },
   )
 
-  const allNotifications = [
-    ...(initialNotifications ?? []),
-    ...(data?.slice(1).flatMap((d) => d.notifications) ?? []),
-  ]
+  // ── Per-page read confirmation (R8) ──
+  // The SSR first page was confirmed server-side (revision-guarded) at
+  // render time. Each subsequently FETCHED page the user has actually seen
+  // is confirmed here via POST /api/notifications/ack with the (id,
+  // revision) pair observed at fetch time — a stale confirmation can never
+  // clear a re-activated row, and the badge converges to the server's
+  // post-confirmation truth. Fires once per page; failures are silent
+  // (the unread state simply stays until the next visit).
+  const ackedPagesRef = useRef(new Set<number>())
+  useEffect(() => {
+    if (!data) return
+    let cancelled = false
+    ;(async () => {
+      for (let pageIndex = 0; pageIndex < data.length; pageIndex++) {
+        if (cancelled || ackedPagesRef.current.has(pageIndex)) continue
+        const page = data[pageIndex]
+        if (!page?.notifications?.length) continue
+        const items = page.notifications
+          .filter((n) => !n.read)
+          .map((n) => ({ id: n.id, revision: n.revision }))
+        if (items.length > 0) {
+          const result = await apiPost<{ confirmed: number; unreadRemaining: number }>('/api/notifications/ack', { items })
+          if (!cancelled && result.ok && result.data) {
+            setNotificationCount(result.data.unreadRemaining)
+          }
+        }
+        ackedPagesRef.current.add(pageIndex)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [data, setNotificationCount])
+
+  // Dedupe by id: a re-activation between cached pages could otherwise
+  // render the same notification twice.
+  const allNotifications = useMemo(() => {
+    const source = data
+      ? data.flatMap((page) => page?.notifications ?? [])
+      : initialNotifications
+    const seen = new Set<string>()
+    return source.filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)))
+  }, [data, initialNotifications])
 
   const lastPage = data?.[data.length - 1]
   const reachingEnd = lastPage && lastPage.nextCursor === null && (data?.length ?? 0) > 0
@@ -116,6 +185,12 @@ export default function NotificationList({ initialNotifications, initialCursor }
     observer.observe(el)
     return () => observer.disconnect()
   }, [setSize, size, isValidating, reachingEnd])
+
+  if (allNotifications.length === 0 && error) {
+    return (
+      <div className="py-6 text-center text-sm text-danger">{t.feed.failedToLoad}</div>
+    )
+  }
 
   return (
     <>

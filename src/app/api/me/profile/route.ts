@@ -8,6 +8,8 @@
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
 import { deleteUnreferencedUploads } from '@/lib/upload-cleanup'
+import { assertUploadAssetsAvailable } from '@/lib/upload-lifecycle'
+import { PostServiceError } from '@/lib/services/post-core.service'
 import { requireWrite } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { userSelect, serializeUser } from '@/lib/serialize'
@@ -46,18 +48,38 @@ export async function PATCH(request: NextRequest) {
     clean.website = (url.startsWith('https://') || url.startsWith('http://')) ? url : null
   }
 
-  // Old avatar/banner (fetched before the update overwrites them) for
-  // orphan cleanup below.
-  const prev = await prisma.user.findUnique({
-    where: { id: user.id },
-    select: { avatar: true, banner: true },
-  })
+  // New public references assert asset availability under the per-asset
+  // lifecycle lock (R5) inside the update transaction; non-canonical upload
+  // URLs are rejected (400) before the reference is written.
+  const publicRefs = [clean.avatar, clean.banner].filter(
+    (u): u is string => typeof u === 'string' && u.startsWith('/uploads/'),
+  )
 
-  const updated = await prisma.user.update({
-    where: { id: user.id },
-    data: clean,
-    select: { ...userSelect, email: true },
+  let updated
+  try {
+  updated = await prisma.$transaction(async (tx) => {
+    // Old avatar/banner (fetched before the update overwrites them) for
+    // orphan cleanup below.
+    const prev = await tx.user.findUnique({
+      where: { id: user.id },
+      select: { avatar: true, banner: true },
+    })
+    if (publicRefs.length > 0) {
+      await assertUploadAssetsAvailable(tx, publicRefs, 'public')
+    }
+    const updated = await tx.user.update({
+      where: { id: user.id },
+      data: clean,
+      select: { ...userSelect, email: true },
+    })
+    return { updated, prev }
   })
+  } catch (e: unknown) {
+    if (e instanceof PostServiceError) return jsonError(e.status, e.code, e.message)
+    throw e
+  }
+  const updatedUser = updated.updated
+  const prev = updated.prev
 
   // Best-effort cleanup: the replaced avatar/banner file may now be
   // orphaned (only deleted if no row still references it).
@@ -68,5 +90,5 @@ export async function PATCH(request: NextRequest) {
   }
   if (replaced.length > 0) await deleteUnreferencedUploads(replaced)
 
-  return Response.json({ user: serializeUser(updated) })
+  return Response.json({ user: serializeUser(updatedUser) })
 }

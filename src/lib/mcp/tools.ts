@@ -3,6 +3,7 @@
  * Single source of truth for all tools exposed via /mcp.
  */
 
+import { createHash } from 'node:crypto'
 import { z } from 'zod'
 import type { ToolAnnotations } from '@modelcontextprotocol/sdk/types.js'
 import { prisma } from '@/lib/db'
@@ -20,7 +21,50 @@ import { searchPostsFirstPage, searchPostsAfterCursor } from '@/lib/services/sea
 import { createPost, editPost, deletePost } from '@/lib/services/post-write.service'
 import { setPostInteraction, type InteractionAction } from '@/lib/services/interaction.service'
 import { setUserFollow } from '@/lib/services/follow.service'
+import {
+  getNotificationsPage,
+  getUnreadNotificationCount,
+  InvalidNotificationCursorError,
+} from '@/lib/services/notify.service'
 import { serializeUser, userSelect } from '@/lib/serialize'
+
+/** Retention window for create_post idempotency keys. */
+export const POST_REQUEST_KEY_TTL_MS = 24 * 60 * 60 * 1000
+
+interface ToolErrorOptions {
+  /** Programmatic next step — stable text the agent can act on. */
+  recovery?: string
+  retryAfterSec?: number
+}
+
+/**
+ * Stable, machine-judgeable tool error: `structuredContent.error` carries a
+ * code (matchable without NLP), the human message, an optional recovery
+ * direction and retryAfterSec for rate limits. The text content mirrors it
+ * for clients that only read text.
+ */
+type McpToolResult = {
+  isError?: boolean
+  content: Array<{ type: 'text'; text: string }>
+  structuredContent?: unknown
+}
+
+function toolError(code: string, message: string, opts: ToolErrorOptions = {}): McpToolResult {
+  const error: Record<string, unknown> = { code, message }
+  if (opts.recovery) error.recovery = opts.recovery
+  if (opts.retryAfterSec !== undefined) error.retryAfterSec = opts.retryAfterSec
+  return {
+    isError: true,
+    content: [{
+      type: 'text',
+      text: `${message}${opts.recovery ? ` Recovery: ${opts.recovery}` : ''}`,
+    }],
+    structuredContent: { error },
+  }
+}
+
+const NOT_FOUND_RECOVERY = 'The object may have been deleted, or the identifier is wrong. Refresh your view via list_posts or search_posts before acting further.'
+const PERMISSION_RECOVERY = 'Re-run get_capabilities to see the current effective permissions; the account standing (verification/restriction) controls write access dynamically.'
 
 export interface McpToolDefinition {
   name: string
@@ -75,7 +119,7 @@ const getCapabilitiesTool: McpToolDefinition = {
   handler: async (args, identity) => {
     const parsed = getCapabilitiesSchema.safeParse(args ?? {})
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     const caps = computeCapabilities(identity)
     return {
@@ -102,7 +146,7 @@ const listPostsTool: McpToolDefinition = {
   handler: async (args, identity) => {
     const parsed = listPostsSchema.safeParse(args || {})
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     const tab = parsed.data.tab ?? 'latest'
     const take = parsed.data.take ?? 20
@@ -110,22 +154,22 @@ const listPostsTool: McpToolDefinition = {
     const userId = identity.user?.id ?? null
 
     if (tab === 'following' && !userId) {
-      return { isError: true, content: [{ type: 'text', text: 'Authentication required for following feed.' }] }
+      return toolError('unauthorized', 'Authentication required for following feed.', { recovery: 'Provide a valid API key via the Authorization header.' })
     }
 
     if (cas) {
       if (!CAS_FORMAT.test(cas)) {
-        return { isError: true, content: [{ type: 'text', text: 'Invalid CAS number format (must match \\d{2,7}-\\d{2}-\\d).' }] }
+        return toolError('invalid_arguments', 'Invalid CAS number format (must match \\d{2,7}-\\d{2}-\\d).')
       }
       if (tab !== 'latest') {
-        return { isError: true, content: [{ type: 'text', text: 'CAS filtering requires latest feed.' }] }
+        return toolError('invalid_arguments', 'CAS filtering requires latest feed.')
       }
     }
 
     let resolvedAuthorId: string | undefined = undefined
     if (author) {
       if (tab !== 'latest') {
-        return { isError: true, content: [{ type: 'text', text: 'Author filtering requires latest feed.' }] }
+        return toolError('invalid_arguments', 'Author filtering requires latest feed.')
       }
       const targetUser = await prisma.user.findUnique({
         where: { username: author.toLowerCase() },
@@ -145,7 +189,7 @@ const listPostsTool: McpToolDefinition = {
     if (cursor) {
       const isSpecialFilter = Boolean(resolvedAuthorId || cas)
       if (!validateTimelineCursor(cursor, tab, isSpecialFilter)) {
-        return { isError: true, content: [{ type: 'text', text: 'Invalid cursor.' }] }
+        return toolError('invalid_cursor', 'Invalid cursor.', { recovery: 'Only pass cursor/nextCursor values returned by the same tool.' })
       }
     }
 
@@ -178,19 +222,19 @@ const getPostSchema = z.object({
 
 const getPostTool: McpToolDefinition = {
   name: 'get_post',
-  description: 'Get a single post by its shortCode. Returns 404 error if not found or soft-deleted.',
+  description: 'Get a single post by its shortCode. Returns a not_found error if missing or soft-deleted.',
   inputSchema: zodToInputSchema(getPostSchema),
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   isMutation: false,
   handler: async (args, identity) => {
     const parsed = getPostSchema.safeParse(args)
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     const userId = identity.user?.id ?? null
     const post = await getPostByShortCode(parsed.data.shortCode, userId)
     if (!post || post.deletedAt) {
-      return { isError: true, content: [{ type: 'text', text: 'Post not found.' }] }
+      return toolError('not_found', 'Post not found.', { recovery: NOT_FOUND_RECOVERY })
     }
     const site = await getSiteConfig()
     const result = {
@@ -221,7 +265,7 @@ const getPostDiscussionTool: McpToolDefinition = {
   handler: async (args, identity) => {
     const parsed = getPostDiscussionSchema.safeParse(args)
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     const { shortCode, cursor, ancestorCursor } = parsed.data
     const take = parsed.data.take ?? 20
@@ -230,14 +274,14 @@ const getPostDiscussionTool: McpToolDefinition = {
 
     const post = await getPostByShortCode(shortCode, userId)
     if (!post || post.deletedAt) {
-      return { isError: true, content: [{ type: 'text', text: 'Post not found.' }] }
+      return toolError('not_found', 'Post not found.', { recovery: NOT_FOUND_RECOVERY })
     }
 
     if (cursor && !validateTimelineCursor(cursor, 'latest', true)) {
-      return { isError: true, content: [{ type: 'text', text: 'Invalid cursor.' }] }
+      return toolError('invalid_cursor', 'Invalid cursor.', { recovery: 'Only pass cursor/nextCursor values returned by the same tool.' })
     }
     if (ancestorCursor && (typeof ancestorCursor !== 'string' || ancestorCursor.length > 512)) {
-      return { isError: true, content: [{ type: 'text', text: 'Invalid ancestorCursor.' }] }
+      return toolError('invalid_cursor', 'Invalid ancestorCursor.', { recovery: 'Only pass nextAncestorCursor values returned by get_post_discussion for the same target post.' })
     }
 
     const isInitialCall = cursor === undefined && ancestorCursor === undefined
@@ -273,7 +317,7 @@ const getPostDiscussionTool: McpToolDefinition = {
         result.nextAncestorCursor = chainResult.nextAncestorCursor
       } catch (err: unknown) {
         if (err instanceof PostServiceError) {
-          return { isError: true, content: [{ type: 'text', text: `Invalid ancestorCursor: ${err.message}` }] }
+          return toolError('invalid_cursor', `Invalid ancestorCursor: ${err.message}`, { recovery: 'Only pass nextAncestorCursor values returned by get_post_discussion for the same target post.' })
         }
         throw err
       }
@@ -315,10 +359,10 @@ const searchPostsTool: McpToolDefinition = {
   handler: async (args, identity) => {
     const parsed = searchPostsSchema.safeParse(args)
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     if (!canSearch(identity.user)) {
-      return { isError: true, content: [{ type: 'text', text: 'Verification is required to use search.' }] }
+      return toolError('forbidden', 'Verification is required to use search.', { recovery: PERMISSION_RECOVERY })
     }
     const { query, cursor } = parsed.data
     const limit = parsed.data.limit ?? 20
@@ -354,18 +398,18 @@ const getChemicalTool: McpToolDefinition = {
   handler: async (args) => {
     const parsed = getChemicalSchema.safeParse(args)
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     const { casNumber } = parsed.data
     if (!CAS_FORMAT.test(casNumber)) {
-      return { isError: true, content: [{ type: 'text', text: 'Invalid CAS number format (must match \\d{2,7}-\\d{2}-\\d).' }] }
+      return toolError('invalid_arguments', 'Invalid CAS number format (must match \\d{2,7}-\\d{2}-\\d).')
     }
     const chemical = await prisma.chemical.findUnique({
       where: { casNumber },
       select: { casNumber: true, name: true, smiles: true, banned: true, postCount: true, createdAt: true },
     })
     if (!chemical) {
-      return { isError: true, content: [{ type: 'text', text: 'Chemical not found.' }] }
+      return toolError('not_found', 'Chemical not found.', { recovery: 'Check the CAS number format and spelling; discover existing ones via list_posts with a cas filter.' })
     }
     const site = await getSiteConfig()
     const result = {
@@ -385,28 +429,137 @@ const getProfileSchema = z.object({
 
 const getProfileTool: McpToolDefinition = {
   name: 'get_profile',
-  description: 'Get public profile metadata and counts by username.',
+  description: 'Get public profile metadata, counts, and (when authenticated) the current caller\'s follow relationship with this member — so agents never need to probe the relationship with write operations.',
   inputSchema: zodToInputSchema(getProfileSchema),
   annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
   isMutation: false,
-  handler: async (args) => {
+  handler: async (args, identity) => {
     const parsed = getProfileSchema.safeParse(args)
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     const user = await prisma.user.findUnique({
       where: { username: parsed.data.username.toLowerCase() },
       select: userSelect,
     })
     if (!user) {
-      return { isError: true, content: [{ type: 'text', text: 'User not found.' }] }
+      return toolError('not_found', 'User not found.', { recovery: 'Check the username spelling via search or list_posts authors.' })
     }
     const site = await getSiteConfig()
     const serialized = serializeUser(user)
-    const result = {
+    const result: Record<string, unknown> = {
       ...serialized,
       url: `${site.origin}/u/${serialized.username}`,
     }
+    // Caller-vs-target relationship: explicit read so an agent can decide
+    // its next step without issuing write probes (set_follow) to "test".
+    const viewer = identity.user
+    if (viewer) {
+      const isYou = user.id === viewer.id
+      const [youFollow, followsYou] = isYou
+        ? [false, false]
+        : await Promise.all([
+            prisma.follow.findUnique({
+              where: { followerId_followingId: { followerId: viewer.id, followingId: user.id } },
+              select: { id: true },
+            }),
+            prisma.follow.findUnique({
+              where: { followerId_followingId: { followerId: user.id, followingId: viewer.id } },
+              select: { id: true },
+            }),
+          ])
+      result.viewerRelationship = {
+        isYou,
+        youFollow: !!youFollow,
+        followsYou: !!followsYou,
+      }
+    }
+    return {
+      content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+      structuredContent: result,
+    }
+  },
+}
+
+// ── Notification inbox (Agent receive loop) ──────────────────
+
+const listNotificationsSchema = z.object({
+  cursor: z.string().describe('nextCursor from a previous list_notifications call').optional(),
+}).strict()
+
+const listNotificationsTool: McpToolDefinition = {
+  name: 'list_notifications',
+  description: 'Read the caller\'s notification inbox, newest first (replies, likes, reposts, follows, messages, moderation outcomes). Each entry carries the actor and, where applicable, the post shortCode — jump straight into the discussion with get_post_discussion. Strictly read-only: nothing is marked as read.',
+  inputSchema: zodToInputSchema(listNotificationsSchema),
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+  isMutation: false,
+  handler: async (args, identity) => {
+    const parsed = listNotificationsSchema.safeParse(args ?? {})
+    if (!parsed.success) {
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
+    }
+    const user = identity.user
+    if (!user) {
+      return toolError('unauthorized', 'Authentication required.')
+    }
+    const { cursor } = parsed.data
+    try {
+      const [page, unreadCount] = await Promise.all([
+        getNotificationsPage(user.id, cursor),
+        getUnreadNotificationCount(user.id),
+      ])
+      const result = {
+        notifications: page.notifications.map((n) => ({
+          type: n.type,
+          from: (n.from as { username?: string; displayName?: string | null }).username ?? null,
+          postId: n.postId,
+          postShortCode: n.postShortCode,
+          // COMMENT entries: the actual new reply's shortCode — open it via
+          // get_post_discussion to read exactly what arrived, then continue
+          // the discussion with create_post(parentId=replyPostId).
+          replyShortCode: n.replyShortCode ?? null,
+          read: n.read,
+          createdAt: n.createdAt,
+        })),
+        unreadCount,
+        nextCursor: page.nextCursor,
+      }
+      return {
+        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        structuredContent: result,
+      }
+    } catch (e: unknown) {
+      if (e instanceof InvalidNotificationCursorError) {
+        return toolError('bad_request', e.message, { recovery: 'Only pass nextCursor values returned by this tool; start without a cursor for the first page.' })
+      }
+      throw e
+    }
+  },
+}
+
+const markNotificationsReadSchema = z.object({}).strict()
+
+const markNotificationsReadTool: McpToolDefinition = {
+  name: 'mark_notifications_read',
+  description: 'Explicitly mark ALL of the caller\'s notifications as read (same semantics as the web mark-all action). This is the only notification tool that changes read state — list_notifications never does.',
+  inputSchema: zodToInputSchema(markNotificationsReadSchema),
+  annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+  isMutation: true,
+  handler: async (args, identity) => {
+    const parsed = markNotificationsReadSchema.safeParse(args ?? {})
+    if (!parsed.success) {
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
+    }
+    const writeErr = writeAccessError(identity)
+    if (writeErr) {
+      return toolError(writeErr.code, writeErr.message, { recovery: PERMISSION_RECOVERY })
+    }
+    const user = identity.user!
+    const marked = await prisma.notification.updateMany({
+      where: { userId: user.id, read: false },
+      data: { read: true },
+    })
+    const result = { ok: true, markedRead: marked.count }
     return {
       content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
       structuredContent: result,
@@ -422,43 +575,78 @@ const createPostSchema = z.object({
   quotePostId: z.string().nullable().describe('ID of post being quoted').optional(),
   images: z.array(z.string().startsWith('/uploads/').max(2000)).max(4).describe('Uploaded image URLs (must start with /uploads/, max 4)').optional(),
   casNumbers: z.array(z.string()).nullable().describe('CAS numbers associated with this post').optional(),
+  clientRequestId: z.string().min(8).max(64).regex(/^[A-Za-z0-9_-]+$/).describe('Optional idempotency key for THIS logical creation. Generate a fresh unique value per intended post (e.g. a UUID) and REUSE it when retrying after an uncertain result: the same key with the same content returns the original post instead of creating a duplicate; the same key with different content is rejected. Keys are bound to your caller identity and kept for 24 hours. Never reuse a key for a genuinely new post.').optional(),
 }).strict()
 
 const createPostTool: McpToolDefinition = {
   name: 'create_post',
-  description: 'Publish a new post, reply, or quote post. Non-idempotent mutation. Requires verified status for API keys.',
+  description: 'Publish a new post, reply, or quote post. Requires verified status for API keys. Without a clientRequestId the call is non-idempotent — when a result is uncertain (network timeout, unknown response), verify first via list_posts(author=<you>) or get_post rather than blindly re-sending. With a clientRequestId, a retry after an uncertain result is safe: the key is arbitrated inside the creation transaction, a retry returns the committed original post (replayed: true), and no losing call leaves any post behind. Keys are per-caller and valid for 24 hours.',
   inputSchema: zodToInputSchema(createPostSchema),
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   isMutation: true,
   handler: async (args, identity) => {
     const writeErr = writeAccessError(identity)
     if (writeErr) {
-      return { isError: true, content: [{ type: 'text', text: writeErr.message }] }
+      return toolError(writeErr.code, writeErr.message, { recovery: PERMISSION_RECOVERY })
     }
     const parsed = createPostSchema.safeParse(args)
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
-    const { content, parentId, quotePostId, images, casNumbers } = parsed.data
+    const { content, parentId, quotePostId, images, casNumbers, clientRequestId } = parsed.data
     const imagesList = images || []
     if (imagesList.length > 0 && !canUploadMedia(identity.user)) {
-      return { isError: true, content: [{ type: 'text', text: 'Verification is required to upload media.' }] }
+      return toolError('forbidden', 'Verification is required to upload media.', { recovery: PERMISSION_RECOVERY })
     }
-    const result = await createPost(identity.user!, {
+
+    const caller = identity.user!
+    const idempotency = clientRequestId
+      ? (() => {
+          const canonical = JSON.stringify({
+            content,
+            parentId: parentId ?? null,
+            quotePostId: quotePostId ?? null,
+            images: imagesList,
+            casNumbers: casNumbers ?? null,
+          })
+          return {
+            requestId: clientRequestId,
+            contentHash: createHash('sha256').update(canonical).digest('hex'),
+          }
+        })()
+      : undefined
+
+    // The service arbitrates the request key inside the creation transaction:
+    // post, counters, CAS relations, outbox tasks and the key row commit or
+    // roll back together.
+    const result = await createPost(caller, {
       content,
       parentId: parentId ?? null,
       quotePostId: quotePostId ?? null,
       images: imagesList,
       casNumbers: casNumbers ?? null,
+      idempotency,
     })
     if (!result.ok) {
-      return { isError: true, content: [{ type: 'text', text: result.error.message }] }
+      return toolError(result.error.code, result.error.message, {
+        recovery: result.error.code === 'request_key_conflict'
+          ? 'Generate a fresh clientRequestId for a new post. Do not reuse the key with altered content.'
+          : result.error.code === 'request_key_post_gone'
+            ? 'The original post was deleted. Use a fresh clientRequestId if you intend to publish again.'
+            : result.error.status === 404
+              ? 'The referenced parent/quote post is gone. Refresh via get_post_discussion before replying.'
+              : result.error.code === 'asset_gone'
+                ? 'A referenced image was removed by cleanup. Re-upload the image via /api/upload and retry.'
+                : undefined,
+      })
     }
+
     const site = await getSiteConfig()
-    const output = {
+    const output: Record<string, unknown> = {
       ...result.data,
       url: `${site.origin}/p/${result.data.shortCode}`,
     }
+    if (result.replayed) output.replayed = true
     return {
       content: [{ type: 'text', text: JSON.stringify(output, null, 2) }],
       structuredContent: output,
@@ -482,15 +670,15 @@ const editPostTool: McpToolDefinition = {
   handler: async (args, identity) => {
     const writeErr = writeAccessError(identity)
     if (writeErr) {
-      return { isError: true, content: [{ type: 'text', text: writeErr.message }] }
+      return toolError(writeErr.code, writeErr.message, { recovery: PERMISSION_RECOVERY })
     }
     const parsed = editPostSchema.safeParse(args)
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     const { shortCode, content, images, casNumbers } = parsed.data
     if (images && images.length > 0 && !canUploadMedia(identity.user)) {
-      return { isError: true, content: [{ type: 'text', text: 'Verification is required to upload media.' }] }
+      return toolError('forbidden', 'Verification is required to upload media.', { recovery: PERMISSION_RECOVERY })
     }
     const result = await editPost(identity.user!, shortCode, {
       content,
@@ -498,7 +686,7 @@ const editPostTool: McpToolDefinition = {
       casNumbers: casNumbers ?? null,
     })
     if (!result.ok) {
-      return { isError: true, content: [{ type: 'text', text: result.error.message }] }
+      return toolError(result.error.code, result.error.message)
     }
     const site = await getSiteConfig()
     const output = {
@@ -525,15 +713,15 @@ const deletePostTool: McpToolDefinition = {
   handler: async (args, identity) => {
     const writeErr = writeAccessError(identity)
     if (writeErr) {
-      return { isError: true, content: [{ type: 'text', text: writeErr.message }] }
+      return toolError(writeErr.code, writeErr.message, { recovery: PERMISSION_RECOVERY })
     }
     const parsed = deletePostSchema.safeParse(args)
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     const result = await deletePost(identity.user!, parsed.data.shortCode)
     if (!result.ok) {
-      return { isError: true, content: [{ type: 'text', text: result.error.message }] }
+      return toolError(result.error.code, result.error.message)
     }
     const output = { success: true, shortCode: parsed.data.shortCode }
     return {
@@ -558,16 +746,16 @@ const setInteractionTool: McpToolDefinition = {
   handler: async (args, identity) => {
     const writeErr = writeAccessError(identity)
     if (writeErr) {
-      return { isError: true, content: [{ type: 'text', text: writeErr.message }] }
+      return toolError(writeErr.code, writeErr.message, { recovery: PERMISSION_RECOVERY })
     }
     const parsed = setInteractionSchema.safeParse(args)
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     const { shortCode, action, state } = parsed.data
     const result = await setPostInteraction(identity.user!, shortCode, action as InteractionAction, state)
     if (!result.ok) {
-      return { isError: true, content: [{ type: 'text', text: result.error.message }] }
+      return toolError(result.error.code, result.error.message)
     }
     return {
       content: [{ type: 'text', text: JSON.stringify(result.data, null, 2) }],
@@ -590,16 +778,16 @@ const setFollowTool: McpToolDefinition = {
   handler: async (args, identity) => {
     const writeErr = writeAccessError(identity)
     if (writeErr) {
-      return { isError: true, content: [{ type: 'text', text: writeErr.message }] }
+      return toolError(writeErr.code, writeErr.message, { recovery: PERMISSION_RECOVERY })
     }
     const parsed = setFollowSchema.safeParse(args)
     if (!parsed.success) {
-      return { isError: true, content: [{ type: 'text', text: `Invalid arguments: ${parsed.error.message}` }] }
+      return toolError('invalid_arguments', `Invalid arguments: ${parsed.error.message}`)
     }
     const { username, follow } = parsed.data
     const result = await setUserFollow(identity.user!, username, follow)
     if (!result.ok) {
-      return { isError: true, content: [{ type: 'text', text: result.error.message }] }
+      return toolError(result.error.code, result.error.message)
     }
     return {
       content: [{ type: 'text', text: JSON.stringify(result.data, null, 2) }],
@@ -616,6 +804,8 @@ export const ALL_TOOLS: McpToolDefinition[] = [
   searchPostsTool,
   getChemicalTool,
   getProfileTool,
+  listNotificationsTool,
+  markNotificationsReadTool,
   createPostTool,
   editPostTool,
   deletePostTool,

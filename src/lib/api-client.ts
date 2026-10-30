@@ -12,6 +12,7 @@ export interface ApiResult<T> {
   data: T | null
   error: string | null
   status: number
+  headers?: Headers
 }
 
 async function request<T>(
@@ -56,6 +57,7 @@ async function request<T>(
       data: null,
       error: errorBody?.error?.message || `Request failed (${res.status})`,
       status: res.status,
+      headers: res.headers,
     }
   }
 
@@ -64,6 +66,7 @@ async function request<T>(
     data: parsed as T,
     error: null,
     status: res.status,
+    headers: res.headers,
   }
 }
 

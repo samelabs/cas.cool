@@ -7,7 +7,7 @@
 
 import { NextRequest } from 'next/server'
 import { prisma } from '@/lib/db'
-import { upsertNotification } from '@/lib/notification'
+import { enqueueSideEffects, drainEnqueuedSideEffects } from '@/lib/services/side-effect.service'
 import { canDirectMessage } from '@/lib/permissions'
 import { requireWrite } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
@@ -56,17 +56,35 @@ export async function POST(
       return jsonError(403, 'forbidden', 'You can only message users who follow you.')
   }
 
-  await prisma.$transaction(async (tx) => {
-    await tx.directMessage.create({
+  // The message row and the recipient's MESSAGE notification event commit
+  // together; the response carries the server message identity so the
+  // client can replace its optimistic bubble without clock inference.
+  const { message, taskIds } = await prisma.$transaction(async (tx) => {
+    const message = await tx.directMessage.create({
       data: { conversationId: conv.id, senderId: user.id, receiverId, content },
     })
     await tx.conversation.update({
       where: { id: conv.id },
       data: { lastAt: new Date(), deletedBy1: false, deletedBy2: false },
     })
+    const taskIds = await enqueueSideEffects(tx, [{
+      kind: 'notification',
+      payload: {
+        userId: receiverId,
+        fromId: user.id,
+        type: 'MESSAGE',
+        eventKey: `message:${message.id}`,
+      },
+    }])
+    return { message, taskIds }
   })
 
-  await upsertNotification({ userId: receiverId, fromId: user.id, type: 'MESSAGE' })
+  // Post-commit delivery — failures stay pending on the outbox task, never
+  // surfaced as a 500 for the committed message.
+  await drainEnqueuedSideEffects(taskIds)
 
-  return Response.json({ ok: true })
+  return Response.json({
+    ok: true,
+    message: { id: message.id, createdAt: message.createdAt },
+  })
 }

@@ -4,7 +4,7 @@
  */
 
 import { prisma } from '@/lib/db'
-import { upsertNotification } from '@/lib/notification'
+import { enqueueSideEffects, drainEnqueuedSideEffects } from '@/lib/services/side-effect.service'
 import type { Prisma } from '@prisma/client'
 import type { ServiceResult } from '@/lib/services/post-core.service'
 
@@ -46,21 +46,37 @@ export async function setUserFollow(
 
   if (follow) {
     // Idempotent follow: if already following, treat as success without double increment.
+    // The notification outbox task is enqueued INSIDE the transaction, so a
+    // concurrent duplicate (P2002 loser) rolls its task back with the rest —
+    // only the transaction that actually created the relation can leave a
+    // notification event behind (relation, counters and event share one
+    // commit boundary).
+    let taskIds: string[] = []
     try {
-      await prisma.$transaction(async (tx) => {
+      taskIds = await prisma.$transaction(async (tx) => {
         await lockUserPair(tx, actor.id, target.id)
-        await tx.follow.create({ data: { followerId: actor.id, followingId: target.id } })
+        const row = await tx.follow.create({ data: { followerId: actor.id, followingId: target.id } })
         await tx.user.update({ where: { id: actor.id }, data: { followingCount: { increment: 1 } } })
         await tx.user.update({ where: { id: target.id }, data: { followerCount: { increment: 1 } } })
+        return enqueueSideEffects(tx, [{
+          kind: 'notification',
+          payload: {
+            userId: target.id,
+            fromId: actor.id,
+            type: 'FOLLOW',
+            eventKey: `follow:${row.id}`,
+          },
+        }])
       })
     } catch (e: unknown) {
       if (!(e instanceof Error && 'code' in e && e.code === 'P2002')) {
         throw e
       }
+      // Already following: idempotent success, no event, no task.
     }
-    // Notification stays OUTSIDE the transaction (and outside the
-    // idempotency catch): it must neither block on nor roll back the pair.
-    await upsertNotification({ userId: target.id, fromId: actor.id, type: 'FOLLOW' })
+    // Post-commit delivery — a failure must not turn the committed follow
+    // into a 500; the task stays pending and is re-driven automatically.
+    await drainEnqueuedSideEffects(taskIds)
     return { ok: true, data: { following: true } }
   } else {
     // Idempotent unfollow: deleteMany with count guard prevents counter underflow.

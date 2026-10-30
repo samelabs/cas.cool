@@ -34,9 +34,9 @@ export default async function AboutPage() {
 
           {/* What is it */}
           <section className="mb-8">
-            <h2 className="mb-3 text-lg font-bold text-ink">What is {site.name}?</h2>
+            <h2 className="mb-3 text-lg font-bold text-ink">{t.about.whatIs(site.name)}</h2>
             <p className="text-base leading-relaxed text-ink-muted">
-              {t.about.description}
+              {site.description}
             </p>
           </section>
 

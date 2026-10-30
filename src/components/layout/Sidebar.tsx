@@ -141,7 +141,18 @@ export function Sidebar({ currentUser: userProp, needsDocuments = false }: Sideb
               className="flex min-w-0 flex-1 items-center justify-center rounded-full p-2 transition-colors hover:bg-surface-hover xl:justify-start xl:gap-3"
               title={currentUser.displayName || currentUser.username}
             >
-              <Avatar user={currentUser} size="md" />
+              {/* src/username, NOT user= — the user prop makes Avatar render
+                  its own <Link>, which would nest an <a> inside this Link.
+                  Invalid HTML: the browser parser restructures it, React
+                  hydration fails on every authenticated page (#418), and the
+                  recovery wipes SWR's registered event listeners — killing
+                  revalidateOnFocus app-wide. */}
+              <Avatar
+                src={currentUser.avatar}
+                name={currentUser.displayName || currentUser.username}
+                username={currentUser.username}
+                size="md"
+              />
               <div className="hidden min-w-0 flex-1 leading-tight xl:block">
                 <div className="flex items-center gap-1 text-sm font-semibold text-ink">
                   <span className="truncate">{currentUser.displayName || currentUser.username}</span>

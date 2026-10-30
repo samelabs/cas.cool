@@ -19,17 +19,17 @@ export default function Error({
       <div className="mb-4 text-brand"><FlaskIcon className="h-14 w-14" /></div>
       <h1 className="text-2xl font-extrabold text-ink">{t.errors.somethingWrong}</h1>
       <p className="mt-2 max-w-sm text-sm text-ink-faint">
-        An unexpected error occurred while loading this page. Please try again.
+        {t.errors.unexpectedError}
       </p>
       {error.digest && (
-        <p className="mt-2 font-mono text-xs text-ink-faint">Error ID: {error.digest}</p>
+        <p className="mt-2 font-mono text-xs text-ink-faint">{t.errors.errorId(error.digest)}</p>
       )}
       <button
         type="button"
         onClick={reset}
         className="mt-6 rounded-full bg-brand px-6 py-2.5 text-sm font-bold text-white transition-colors hover:bg-brand-strong"
       >
-        Try again
+        {t.common.retry}
       </button>
     </div>
   )

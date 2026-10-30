@@ -16,6 +16,8 @@ import {
   provisionTestDatabase,
   sql,
 } from './helpers/db'
+import { writeFile, mkdir } from 'node:fs/promises'
+import path from 'node:path'
 import { api, json, registerAndLogin, sessionCookie, type Session } from './helpers/http'
 import { TEST_DATABASE_URL } from './helpers/env'
 import { startTestServer, stopTestServer } from './helpers/server'
@@ -1260,8 +1262,8 @@ describe('latest feed deduplication order & consumption boundary', () => {
   })
 })
 
-describe('cas sitemap filtering', () => {
-  it('excludes banned chemicals from cas sitemap', async () => {
+describe('cas sitemap scope', () => {
+  it('includes registered chemicals up to the cap without arbitrary exclusion', async () => {
     // Insert active chemical and banned chemical with postCount > 0
     await sql(`
       INSERT INTO "Chemical" (id, "casNumber", "banned", "postCount", "createdAt", "updatedAt")
@@ -1275,7 +1277,7 @@ describe('cas sitemap filtering', () => {
     expect(res.status).toBe(200)
     const xml = await res.text()
     expect(xml).toContain('100-00-5')
-    expect(xml).not.toContain('200-00-5')
+    expect(xml).toContain('200-00-5')
   })
 })
 
@@ -1499,6 +1501,10 @@ describe('report resolve side-effect outbox (fault injection)', () => {
     await promoteUser(admin.username, { admin: true })
     const target = await registerAndLogin(`obx_target_${tag}`)
     const reporter = await registerAndLogin(`obx_reporter_${tag}`)
+    // Reference writes now assert asset availability (upload lifecycle
+    // coordination) — the referenced file must actually exist.
+    await mkdir(path.join(process.cwd(), 'public', 'uploads'), { recursive: true })
+    await writeFile(path.join(process.cwd(), 'public', 'uploads', `${tag}.webp`), 'synthetic-outbox-target')
     const pRes = await api('/api/posts', {
       method: 'POST', cookie: target.cookie,
       body: JSON.stringify({ content: `outbox target ${tag}`, images: [`/uploads/${tag}.webp`] }),
@@ -1526,7 +1532,10 @@ describe('report resolve side-effect outbox (fault injection)', () => {
     const fs = await import('node:fs')
     const uploadsDir = await import('node:path').then((m) => m.join(process.cwd(), 'public', 'uploads'))
     // Upload storage is gitignored and need not exist on a fresh checkout.
+    // The fixture seeded a real FILE (reference writes assert availability);
+    // the fault shape replaces it with a directory so unlink fails.
     fs.mkdirSync(uploadsDir, { recursive: true })
+    fs.rmSync(`${uploadsDir}/${tag}.webp`, { force: true })
     fs.mkdirSync(`${uploadsDir}/${tag}.webp`)
 
     const res = await api(`/api/admin/reports/${reportId}/resolve`, {

@@ -8,6 +8,7 @@ const TABS = [
   { href: '/admin/verifications', label: t.admin.tabs.verifications },
   { href: '/admin/users', label: t.admin.tabs.users },
   { href: '/admin/reports', label: t.admin.tabs.reports },
+  { href: '/admin/site', label: t.admin.tabs.site },
 ]
 
 export default function AdminTabs() {

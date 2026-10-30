@@ -111,7 +111,7 @@ export default function VerificationPanel({ variant = 'initial', existingSubmiss
           </div>
           <div>
             <label className={labelCls}>
-              ID number <span className="text-danger">*</span>
+              {t.verify.idNumber} <span className="text-danger">*</span>
             </label>
             <input
               className={inputCls}
@@ -128,7 +128,7 @@ export default function VerificationPanel({ variant = 'initial', existingSubmiss
           {/* Front */}
           <div>
             <label className={labelCls}>
-              ID document — front side <span className="text-danger">*</span>
+              {t.verify.idFrontDoc} <span className="text-danger">*</span>
             </label>
             <div
               className="group relative h-44 cursor-pointer overflow-hidden rounded-lg border-2 border-dashed border-line-strong bg-canvas transition-colors hover:border-brand"
@@ -149,7 +149,7 @@ export default function VerificationPanel({ variant = 'initial', existingSubmiss
               )}
               {uploadingFront && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                  <span className="text-xs font-semibold text-white">Uploading…</span>
+                  <span className="text-xs font-semibold text-white">{t.common.uploading}</span>
                 </div>
               )}
             </div>
@@ -179,7 +179,7 @@ export default function VerificationPanel({ variant = 'initial', existingSubmiss
           {/* Back */}
           <div>
             <label className={labelCls}>
-              ID document — back side <span className="text-danger">*</span>
+              {t.verify.idBackDoc} <span className="text-danger">*</span>
             </label>
             <div
               className="group relative h-44 cursor-pointer overflow-hidden rounded-lg border-2 border-dashed border-line-strong bg-canvas transition-colors hover:border-brand"
@@ -200,7 +200,7 @@ export default function VerificationPanel({ variant = 'initial', existingSubmiss
               )}
               {uploadingBack && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                  <span className="text-xs font-semibold text-white">Uploading…</span>
+                  <span className="text-xs font-semibold text-white">{t.common.uploading}</span>
                 </div>
               )}
             </div>

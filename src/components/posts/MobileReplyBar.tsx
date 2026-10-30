@@ -144,10 +144,10 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
           </div>
           <div className="mt-2 flex justify-end gap-2">
             <Button variant="ghost" size="sm" onClick={() => { setExpanded(false); setContent('') }}>
-              Cancel
+              {t.common.cancel}
             </Button>
             <Button size="sm" loading={submitting} disabled={!canSubmit} onClick={submit}>
-              Reply
+              {t.compose.reply}
             </Button>
           </div>
         </div>

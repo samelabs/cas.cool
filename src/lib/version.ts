@@ -16,6 +16,3 @@
  */
 
 export const VERSION = '1.2.0'
-
-/** GitHub repository (canonical open-source release). */
-export const GITHUB_URL = 'https://github.com/samelabs/cas.cool'

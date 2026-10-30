@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { t } from '@/lib/i18n'
 
 // Lazy-load the molecule renderer so the RDKit WASM bundle (~2MB) only
 // downloads when a CAS page actually has SMILES data.
@@ -29,7 +30,7 @@ export function ChemicalInfo({
       {/* Banned flag */}
       {banned && (
         <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-danger/10 px-2.5 py-0.5 text-xs font-semibold text-danger">
-          Restricted
+          {t.common.restricted}
         </span>
       )}
 

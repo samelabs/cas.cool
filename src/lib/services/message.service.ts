@@ -119,30 +119,38 @@ export async function getConversationThread(
 
   const [otherUser, messages] = await Promise.all([
     prisma.user.findUnique({ where: { id: otherId }, select: userSelect }),
+    // First screen = the MOST RECENT window (newest `limit` messages),
+    // rendered chronologically. Older history is reachable through
+    // GET /api/messages/:id?beforeTs=&beforeId= (composite boundary, same
+    // ordering as here), which the thread UI loads on scroll-to-top; the
+    // opening view must never hide the newest messages behind an
+    // oldest-first window.
     prisma.directMessage.findMany({
       where: { conversationId },
-      orderBy: { createdAt: 'asc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: limit,
       select: { id: true, senderId: true, content: true, createdAt: true },
     }),
   ])
 
-  // Count unread BEFORE marking
-  const unreadInConv = await prisma.directMessage.count({
-    where: { conversationId, receiverId: currentUserId, readAt: null },
-  }).catch(() => 0)
-
-  // Mark received as read
-  if (unreadInConv > 0) {
-    await prisma.directMessage.updateMany({
-      where: { conversationId, receiverId: currentUserId, readAt: null },
+  // Read-confirmation scope (F06 contract): ONLY the received messages this
+  // call actually returned. A backlog older than the window is not
+  // silently confirmed — it stays unread (badge intact) until it is really
+  // shown/confirmed via the incremental polling contract.
+  const returnedReceivedIds = messages
+    .filter((m) => m.senderId !== currentUserId)
+    .map((m) => m.id)
+  let unreadInConv = 0
+  if (returnedReceivedIds.length > 0) {
+    unreadInConv = await prisma.directMessage.updateMany({
+      where: { id: { in: returnedReceivedIds }, receiverId: currentUserId, readAt: null },
       data: { readAt: new Date() },
-    }).catch(() => {})
+    }).then((r) => r.count).catch(() => 0)
   }
 
   return {
     otherUser: otherUser ? serializeUser(otherUser) : null,
-    messages: messages.map((m) => ({
+    messages: messages.reverse().map((m) => ({
       id: m.id,
       content: m.content,
       senderId: m.senderId,

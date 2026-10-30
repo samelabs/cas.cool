@@ -43,13 +43,17 @@ export async function generateMetadata({
       url: `${site.origin}/p/${code}`,
       type: 'article',
       siteName: site.name,
-      ...(post.images?.[0] ? { images: [{ url: post.images[0] }] } : {}),
+      ...(post.images?.[0]
+        ? { images: post.images.map((img) => ({ url: img.startsWith('http') ? img : `${site.origin}${img}` })) }
+        : {}),
     },
     twitter: {
       card: post.images?.[0] ? 'summary_large_image' : 'summary',
       title,
       description: preview,
-      ...(post.images?.[0] ? { images: [post.images[0]] } : {}),
+      ...(post.images?.[0]
+        ? { images: post.images.map((img) => (img.startsWith('http') ? img : `${site.origin}${img}`)) }
+        : {}),
     },
   }
 }
@@ -101,22 +105,40 @@ export default async function ShortPostPage({
   const authorFollowed =
     me && me.id !== post.authorId ? await checkFollow(me.id, post.authorId) : false
 
+  const publicImages = (post.images ?? []).map((img) =>
+    img.startsWith('http') ? img : `${site.origin}${img}`
+  )
+
   const jsonLd = post.deletedAt
     ? null
     : {
         '@context': 'https://schema.org',
         '@type': 'SocialMediaPosting',
-        headline: post.content.slice(0, 100),
+        text: post.content,
         author: {
           '@type': 'Person',
           name: post.author.displayName || post.author.username,
           url: `${site.origin}/u/${post.author.username}`,
         },
         url: `${site.origin}/p/${code}`,
-        datePublished: post.createdAt,
-        ...(post.images?.[0] ? { image: post.images[0] } : {}),
+        datePublished:
+          post.createdAt instanceof Date ? post.createdAt.toISOString() : new Date(post.createdAt).toISOString(),
+        ...(post.editedAt
+          ? {
+              dateModified:
+                post.editedAt instanceof Date ? post.editedAt.toISOString() : new Date(post.editedAt).toISOString(),
+            }
+          : {}),
+        ...(publicImages.length > 0 ? { image: publicImages } : {}),
         ...(post.chemicals?.[0]
-          ? { about: { '@type': 'ChemicalSubstance', identifier: `CAS ${post.chemicals[0].casNumber}` } }
+          ? {
+              about: {
+                '@type': 'ChemicalSubstance',
+                identifier: `CAS ${post.chemicals[0].casNumber}`,
+                name: `CAS ${post.chemicals[0].casNumber}`,
+                url: `${site.origin}/cas/${post.chemicals[0].casNumber}`,
+              },
+            }
           : {}),
       }
 

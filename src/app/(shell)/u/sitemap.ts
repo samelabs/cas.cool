@@ -6,11 +6,8 @@ export const revalidate = 3600
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = (await getSiteConfig()).origin
-  // BOUNDED, not exhaustive: the 50,000 newest active users only. Users
-  // beyond the cap are not listed in any sitemap until ranking shifts.
-  // (The post sitemap is the only sharded, full-coverage surface.)
+  // Bounded to 50,000 users, ordered by creation date.
   const users = await prisma.user.findMany({
-    where: { status: 'active' },
     take: 50000,
     select: { username: true, createdAt: true },
     orderBy: { createdAt: 'desc' },

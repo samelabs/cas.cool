@@ -44,6 +44,7 @@ next-env.d.ts
 
 # runtime data — never commit
 /public/uploads/
+/private-uploads/
 /logs/
 
 # scratch — rehearsal artifacts, local-only

@@ -9,7 +9,7 @@
 
 import { prisma } from '@/lib/db'
 import { generateShortCode } from '@/lib/shortCode'
-import { upsertNotification } from '@/lib/notification'
+import { enqueueSideEffects, drainEnqueuedSideEffects } from '@/lib/services/side-effect.service'
 import { softDeleteCorePost } from '@/lib/services/post-core-write.service'
 import type { PostActor, ServiceError, ServiceResult } from '@/lib/services/post-core.service'
 
@@ -39,17 +39,31 @@ export async function setPostInteraction(
       case 'like': {
         const existing = await prisma.like.findUnique({ where: { postId_userId: { postId, userId } } })
         if (!existing) {
+          // The notification event is enqueued INSIDE the transaction: a
+          // concurrent loser that catches P2002 rolls its task back with the
+          // relation — only the transaction that actually created the Like
+          // can leave a notification behind (concurrent losers never notify).
+          let taskIds: string[] = []
           try {
-            await prisma.$transaction([
-              prisma.like.create({ data: { postId, userId } }),
-              prisma.post.update({ where: { id: postId }, data: { likeCount: { increment: 1 } } }),
-            ])
+            taskIds = await prisma.$transaction(async (tx) => {
+              const like = await tx.like.create({ data: { postId, userId } })
+              await tx.post.update({ where: { id: postId }, data: { likeCount: { increment: 1 } } })
+              if (post.authorId === userId) return []
+              return enqueueSideEffects(tx, [{
+                kind: 'notification',
+                payload: {
+                  userId: post.authorId,
+                  fromId: userId,
+                  type: 'LIKE',
+                  postId,
+                  eventKey: `like:${like.id}`,
+                },
+              }])
+            })
           } catch (e: unknown) {
             if (!(e instanceof Error && 'code' in e && e.code === 'P2002')) throw e
           }
-          if (post.authorId !== userId) {
-            await upsertNotification({ userId: post.authorId, fromId: userId, type: 'LIKE', postId })
-          }
+          await drainEnqueuedSideEffects(taskIds)
         }
         return { ok: true, data: { liked: true } }
       }
@@ -57,10 +71,10 @@ export async function setPostInteraction(
         const existing = await prisma.bookmark.findUnique({ where: { postId_userId: { postId, userId } } })
         if (!existing) {
           try {
-            await prisma.$transaction([
-              prisma.bookmark.create({ data: { postId, userId } }),
-              prisma.post.update({ where: { id: postId }, data: { bookmarkCount: { increment: 1 } } }),
-            ])
+            await prisma.$transaction(async (tx) => {
+              await tx.bookmark.create({ data: { postId, userId } })
+              await tx.post.update({ where: { id: postId }, data: { bookmarkCount: { increment: 1 } } })
+            })
           } catch (e: unknown) {
             if (!(e instanceof Error && 'code' in e && e.code === 'P2002')) throw e
           }
@@ -72,8 +86,9 @@ export async function setPostInteraction(
         const existing = await prisma.repost.findUnique({ where: { postId_userId: { postId, userId } } })
         if (!existing) {
           const shortCode = generateShortCode()
+          let taskIds: string[] = []
           try {
-            await prisma.$transaction(async (tx) => {
+            taskIds = await prisma.$transaction(async (tx) => {
               const repostPost = await tx.post.create({
                 data: {
                   authorId: userId,
@@ -83,7 +98,7 @@ export async function setPostInteraction(
                   shortCode,
                 },
               })
-              await tx.repost.create({
+              const repost = await tx.repost.create({
                 data: {
                   postId,
                   userId,
@@ -92,13 +107,22 @@ export async function setPostInteraction(
               })
               await tx.post.update({ where: { id: postId }, data: { repostCount: { increment: 1 } } })
               await tx.user.update({ where: { id: userId }, data: { postCount: { increment: 1 } } })
+              if (post.authorId === userId) return []
+              return enqueueSideEffects(tx, [{
+                kind: 'notification',
+                payload: {
+                  userId: post.authorId,
+                  fromId: userId,
+                  type: 'REPOST',
+                  postId,
+                  eventKey: `repost:${repost.id}`,
+                },
+              }])
             })
           } catch (e: unknown) {
             if (!(e instanceof Error && 'code' in e && e.code === 'P2002')) throw e
           }
-          if (post.authorId !== userId) {
-            await upsertNotification({ userId: post.authorId, fromId: userId, type: 'REPOST', postId })
-          }
+          await drainEnqueuedSideEffects(taskIds)
         }
         return { ok: true, data: { reposted: true } }
       }

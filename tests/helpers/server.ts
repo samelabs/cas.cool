@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { rmSync } from 'node:fs'
+import { rmSync, mkdirSync, appendFileSync } from 'node:fs'
 import { SERVER_PORT, SERVER_URL, TEST_DATABASE_URL, TEST_JWT_SECRET } from './env'
 
 let child: ReturnType<typeof spawn> | null = null
@@ -29,8 +29,14 @@ export async function startTestServer(): Promise<void> {
   })
 
   let log = ''
-  child.stdout!.on('data', (d: Buffer) => (log += d))
-  child.stderr!.on('data', (d: Buffer) => (log += d))
+  const append = (d: Buffer) => {
+    log += d
+    // Diagnosability: persist the server log for post-mortem (1.2.0 closure).
+    mkdirSync('.tmp/test-logs', { recursive: true })
+    appendFileSync('.tmp/test-logs/server.log', d)
+  }
+  child.stdout!.on('data', append)
+  child.stderr!.on('data', append)
 
   const deadline = Date.now() + 90_000
   while (Date.now() < deadline) {

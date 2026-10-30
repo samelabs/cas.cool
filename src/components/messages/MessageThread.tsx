@@ -48,39 +48,58 @@ export default function MessageThread({
   const [sending, setSending] = useState(false)
 
   // ── Incoming-message polling ──
-  // Fetch messages newer than the newest one we already have, every 15s
-  // while the tab is visible. Also runs once right after a successful
-  // send so the server copy replaces the optimistic tmp-* bubble.
-  const latestTsRef = useRef<string>(
+  // Fetch messages after a composite (createdAt, id) boundary — the same
+  // ordering the server sorts by, so same-millisecond messages can't be
+  // dropped at a batch cutoff. Each tick drains hasMore batches (bounded
+  // per tick; the boundary advances every batch, so any backlog finishes
+  // on the next tick). A monotonically increasing sequence tag discards
+  // stale/overlapping responses; merge dedupes by server id.
+  // Also runs once right after a successful send so the server copy
+  // replaces the optimistic tmp-* bubble.
+  const boundaryRef = useRef<{ ts: string; id: string }>(
     initialMessages.length > 0
-      ? new Date(initialMessages[initialMessages.length - 1].createdAt).toISOString()
-      : new Date(0).toISOString(),
+      ? (() => {
+          const last = initialMessages[initialMessages.length - 1]
+          return { ts: new Date(last.createdAt).toISOString(), id: last.id }
+        })()
+      : { ts: new Date(0).toISOString(), id: '' },
   )
+  const pollSeqRef = useRef(0)
   const pollNow = useCallback(async () => {
+    const seq = ++pollSeqRef.current
     try {
-      const result = await get<{ messages: ChatMessage[] }>(
-        `/api/messages/${conversationId}?since=${encodeURIComponent(latestTsRef.current)}`,
-      )
-      if (!result.ok || !result.data || result.data.messages.length === 0) return
-      const incoming = result.data.messages
-      setMessages((prev) => {
-        // Server ids we already show (tmp-* optimistic bubbles excluded —
-        // they get superseded below by the real server message).
-        const known = new Set(prev.filter((m) => !m.id.startsWith('tmp-')).map((m) => m.id))
-        const fresh = incoming.filter((m) => !known.has(m.id))
-        if (fresh.length === 0) return prev
-        // Drop optimistic bubbles that the fetched range now covers.
-        const newestFresh = new Date(fresh[fresh.length - 1].createdAt).getTime()
-        const kept = prev.filter(
-          (m) => !m.id.startsWith('tmp-') || new Date(m.createdAt).getTime() > newestFresh,
+      // Drain bounded batches per tick; each batch advances the composite
+      // boundary, so a large backlog continues on the next tick without loss.
+      for (let batch = 0; batch < 10; batch++) {
+        const qs = new URLSearchParams({ afterTs: boundaryRef.current.ts })
+        if (boundaryRef.current.id) qs.set('afterId', boundaryRef.current.id)
+        const result = await get<{ messages: ChatMessage[]; hasMore?: boolean }>(
+          `/api/messages/${conversationId}?${qs}`,
         )
-        return [...kept, ...fresh]
-      })
-      latestTsRef.current = new Date(
-        incoming[incoming.length - 1].createdAt,
-      ).toISOString()
+        if (seq !== pollSeqRef.current) return // a newer poll superseded us
+        if (!result.ok || !result.data || result.data.messages.length === 0) return
+        const incoming = result.data.messages
+        setMessages((prev) => {
+          // Server ids we already show (tmp-* optimistic bubbles excluded —
+          // they get superseded below by the real server message).
+          const known = new Set(prev.filter((m) => !m.id.startsWith('tmp-')).map((m) => m.id))
+          const fresh = incoming.filter((m) => !known.has(m.id))
+          if (fresh.length === 0) return prev
+          // Drop optimistic bubbles that the fetched range now covers.
+          const newestFresh = new Date(fresh[fresh.length - 1].createdAt).getTime()
+          const kept = prev.filter(
+            (m) => !m.id.startsWith('tmp-') || new Date(m.createdAt).getTime() > newestFresh,
+          )
+          return [...kept, ...fresh].sort(
+            (x, y) => new Date(x.createdAt).getTime() - new Date(y.createdAt).getTime(),
+          )
+        })
+        const last = incoming[incoming.length - 1]
+        boundaryRef.current = { ts: new Date(last.createdAt).toISOString(), id: last.id }
+        if (result.data.hasMore !== true) return
+      }
     } catch {
-      // Network hiccup — next tick retries.
+      // Network hiccup — next tick retries from the same boundary.
     }
   }, [conversationId])
   useEffect(() => {
@@ -94,20 +113,99 @@ export default function MessageThread({
     return () => clearInterval(timer)
   }, [pollNow])
 
+  // ── Older-history paging (R7): the first screen shows the most recent
+  // window; scrolling to the top loads the next older batch through the
+  // composite (beforeTs, beforeId) boundary — same ordering as the server,
+  // so no gaps or repeats across pages. hasMoreHistory=false stops at the
+  // conversation's true beginning ONLY after a successful response confirms
+  // no more history. HTTP failures (429, 500) preserve the boundary and
+  // retryable state.
+  const oldestBoundaryRef = useRef<{ ts: string; id: string } | null>(
+    initialMessages.length > 0
+      ? { ts: new Date(initialMessages[0].createdAt).toISOString(), id: initialMessages[0].id }
+      : null,
+  )
+  const [hasMoreHistory, setHasMoreHistory] = useState(true)
+  const loadingHistoryRef = useRef(false)
+  const retryUntilRef = useRef<number>(0)
+  const loadOlderHistory = useCallback(async () => {
+    const boundary = oldestBoundaryRef.current
+    if (!boundary || loadingHistoryRef.current || !hasMoreHistory) return
+    if (Date.now() < retryUntilRef.current) return
+    loadingHistoryRef.current = true
+    try {
+      const qs = new URLSearchParams({ beforeTs: boundary.ts, beforeId: boundary.id })
+      const result = await get<{ messages: ChatMessage[]; hasMore?: boolean }>(
+        `/api/messages/${conversationId}?${qs}`,
+      )
+      if (!result.ok) {
+        // HTTP failure: retain boundary and retryable state (never setHasMoreHistory(false)).
+        if (result.status === 429) {
+          const retryHeader = result.headers?.get('Retry-After')
+          const retrySec = retryHeader ? parseInt(retryHeader, 10) : 1
+          const delayMs = (Number.isNaN(retrySec) ? 1 : Math.max(1, retrySec)) * 1000
+          retryUntilRef.current = Date.now() + delayMs
+        }
+        return
+      }
+      if (!result.data || result.data.messages.length === 0) {
+        // Successful response confirmed no older history.
+        setHasMoreHistory(false)
+        return
+      }
+      const older = result.data.messages
+      setMessages((prev) => {
+        const known = new Set(prev.map((m) => m.id))
+        const fresh = older.filter((m) => !known.has(m.id))
+        if (fresh.length === 0) return prev
+        return [...fresh, ...prev].sort(
+          (x, y) => new Date(x.createdAt).getTime() - new Date(y.createdAt).getTime(),
+        )
+      })
+      const first = older[0]
+      oldestBoundaryRef.current = { ts: new Date(first.createdAt).toISOString(), id: first.id }
+      setHasMoreHistory(result.data.hasMore !== false)
+    } catch {
+      // Network hiccup — retry on the next scroll-to-top.
+    } finally {
+      loadingHistoryRef.current = false
+    }
+  }, [conversationId, hasMoreHistory])
+
   // Cache today's date string once to avoid creating new Date() per message per render.
   const todayStr = new Date().toLocaleDateString()
 
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Preserve the reading position across history prepends: shift scrollTop
+  // by the height the older batch added.
+  const prevHeightRef = useRef<number | null>(null)
+  const prevCountRef = useRef(initialMessages.length)
   useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    if (prevHeightRef.current !== null && messages.length > prevCountRef.current) {
+      // Content grew at the TOP (history prepend): keep the viewport anchored.
+      const delta = el.scrollHeight - prevHeightRef.current
+      if (el.scrollTop < 50) el.scrollTop += delta
+      prevCountRef.current = messages.length
+      prevHeightRef.current = el.scrollHeight
+      return
+    }
     // Direct scrollTop — NOT scrollIntoView(). scrollIntoView() propagates
     // to ALL scrollable ancestors (body/html). When the page is even 1px
     // taller than the viewport (common — borders, safe-area, keyboard),
     // the algorithm recalculates and RESETS this container's scroll to the
     // top, causing messages to "jump up" on every send. Setting scrollTop
     // directly scopes the scroll to this container only.
-    const el = scrollRef.current
-    if (el) el.scrollTop = el.scrollHeight
+    el.scrollTop = el.scrollHeight
+    prevCountRef.current = messages.length
+    prevHeightRef.current = el.scrollHeight
   }, [messages])
+
+  const onHistoryScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (el && el.scrollTop < 60) void loadOlderHistory()
+  }, [loadOlderHistory])
 
   const send = useCallback(async () => {
     const text = draft.trim()
@@ -122,14 +220,37 @@ export default function MessageThread({
     }
     setMessages((m) => [...m, optimistic])
     try {
-      const result = await post('/api/messages/' + conversationId + '/send', { content: text })
-      if (!result.ok) throw new Error()
-      // sendMessage returns { ok: true } — no message id returned. Pull the
-      // server copy immediately; pollNow's merge replaces the tmp-* bubble.
-      void pollNow()
+      const result = await post<{ ok: true; message: { id: string; createdAt: string } }>(
+        '/api/messages/' + conversationId + '/send',
+        { content: text },
+      )
+      if (!result.ok || !result.data?.message?.id) throw new Error()
+      // The response carries the server message identity — replace the
+      // optimistic bubble directly instead of guessing by client clock.
+      // The RECEIVE boundary is NOT advanced here: the send response proves
+      // only that THIS message committed, not that incoming messages up to
+      // it were consumed. pollNow drains (incoming + this message by id)
+      // in order and advances the boundary to what was actually shown.
+      const serverMessage: ChatMessage = {
+        id: result.data.message.id,
+        senderId: currentUserId,
+        content: text,
+        createdAt: result.data.message.createdAt,
+      }
+      setMessages((m) =>
+        m.some((msg) => msg.id === serverMessage.id) // poll already delivered it
+          ? m.filter((msg) => msg.id !== optimistic.id)
+          : m.map((msg) => (msg.id === optimistic.id ? serverMessage : msg)),
+      )
+      // Drain now: incoming messages between the boundary and our send are
+      // fetched in order; the boundary advances only over consumed ranges.
+      await pollNow()
     } catch {
-      // Remove the optimistic message entirely on failure
+      // Send failed: drop the optimistic bubble and restore the draft ONLY
+      // if the user has not typed new content while the request was in
+      // flight — their newer text always wins.
       setMessages((m) => m.filter((msg) => msg.id !== optimistic.id))
+      setDraft((current) => (current.trim().length > 0 ? current : text))
       showToast(t.messages.messageFailed, 'error')
     } finally {
       setSending(false)
@@ -138,7 +259,7 @@ export default function MessageThread({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-1">
+      <div ref={scrollRef} onScroll={onHistoryScroll} className="min-h-0 flex-1 overflow-y-auto scrollbar-thin px-4 py-4 space-y-1">
         {messages.length === 0 ? (
           <div className="h-full grid place-items-center text-center">
             <div>

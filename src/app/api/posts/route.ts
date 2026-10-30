@@ -17,7 +17,8 @@
  * transactions compose in post-write.service.ts.
  */
 
-import { NextRequest } from 'next/server'
+import { after, NextRequest } from 'next/server'
+import { drainEnqueuedSideEffects } from '@/lib/services/side-effect.service'
 import { requireWrite, resolveIdentity } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { validateTimelineCursor } from '@/lib/pagination'
@@ -26,6 +27,16 @@ import { getTimelinePage, getPostChain, PostServiceError, type ServiceError } fr
 
 function jsonError(status: number, code: string, message: string) {
   return Response.json({ error: { code, message } }, { status })
+}
+
+/** Feed responses carry per-viewer interaction state (liked/bookmarked) —
+ *  they are private, uncacheable data. Without this header a browser may
+ *  answer SWR revalidations from a stale copy and the UI never converges. */
+function jsonFeed(body: unknown, init?: ResponseInit) {
+  return Response.json(body, {
+    ...init,
+    headers: { ...(init?.headers ?? {}), 'Cache-Control': 'private, no-store' },
+  })
 }
 
 function serviceError(e: ServiceError) {
@@ -38,6 +49,7 @@ export async function GET(request: NextRequest) {
   const identity = await resolveIdentity()
   const limited = checkRateLimit(identity, 'read')
   if (limited) return limited
+  after(async () => { await drainEnqueuedSideEffects([]) })
 
   const sp = request.nextUrl.searchParams
 
@@ -107,7 +119,7 @@ export async function GET(request: NextRequest) {
         limit: take,
         cursor: cursor || null,
       })
-      return Response.json({
+      return jsonFeed({
         posts: result.ancestors,
         nextCursor: result.nextAncestorCursor,
         hasMoreAncestors: result.hasMoreAncestors,
@@ -136,7 +148,7 @@ export async function GET(request: NextRequest) {
       since,
     })
 
-    return Response.json({ posts: page.posts, nextCursor: page.nextCursor })
+    return jsonFeed({ posts: page.posts, nextCursor: page.nextCursor })
   } catch (err: unknown) {
     if (err instanceof PostServiceError) {
       return jsonError(err.status, err.code, err.message)
@@ -172,5 +184,5 @@ export async function POST(request: NextRequest) {
     },
   )
   if (!result.ok) return serviceError(result.error)
-  return Response.json(result.data, { status: 201 })
+  return Response.json(result.data, { status: 201, headers: { 'Cache-Control': 'private, no-store' } })
 }

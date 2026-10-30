@@ -272,7 +272,7 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
               `post.replyToUsername` (profile Replies tab). */}
           {(replyingTo || post.replyToUsername) && (
             <p className="mt-0.5 text-xs text-ink-faint">
-              Replying to{' '}
+              {t.postCard.replyingTo}{' '}
               <Link
                 href={`/u/${replyingTo ?? post.replyToUsername}`}
                 className="relative z-10 text-brand hover:underline"

@@ -248,13 +248,13 @@ describe('direct message read receipts write side-effect', () => {
       VALUES ($1, $2, $3, $4, 'hello', null, now())`, [msgId, convId, aliceId, bobId])
 
     // Bob uses unverified key: receives message, but readAt must NOT be updated
-    const res1 = await api(`/api/messages/${convId}?since=2000-01-01T00:00:00.000Z`, { bearer: unverifiedKey })
+    const res1 = await api(`/api/messages/${convId}?afterTs=2000-01-01T00:00:00.000Z`, { bearer: unverifiedKey })
     expect(res1.status).toBe(200)
     const [msgRow1] = await sql<{ readAt: Date | null }>(`SELECT "readAt" FROM "DirectMessage" WHERE id = $1`, [msgId])
     expect(msgRow1.readAt).toBeNull()
 
     // Bob uses web session (or verified key): receives message, and readAt is directly recorded in DB
-    const res2 = await api(`/api/messages/${convId}?since=2000-01-01T00:00:00.000Z`, { cookie: bob.cookie })
+    const res2 = await api(`/api/messages/${convId}?afterTs=2000-01-01T00:00:00.000Z`, { cookie: bob.cookie })
     expect(res2.status).toBe(200)
     const [msgRow2] = await sql<{ readAt: Date | null }>(`SELECT "readAt" FROM "DirectMessage" WHERE id = $1`, [msgId])
     expect(msgRow2.readAt).not.toBeNull()

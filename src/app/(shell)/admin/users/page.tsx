@@ -33,6 +33,12 @@ const STATUS_STYLES: Record<string, string> = {
   suspended: 'bg-danger-tint text-danger',
 }
 
+const STATUS_LABELS: Record<string, string> = {
+  active: t.common.active,
+  restricted: t.common.restricted,
+  suspended: t.common.suspended,
+}
+
 export default function AdminUsersPage() {
   const { showToast } = useToast()
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -72,7 +78,7 @@ export default function AdminUsersPage() {
       if (!result.ok) {
         throw new Error(result.error || t.errors.failed)
       }
-      showToast(`Status changed to ${newStatus}`, 'success')
+      showToast(t.admin.statusChangedTo(STATUS_LABELS[newStatus] ?? newStatus), 'success')
       startTransition(async () => {
         try {
           const result = await get<{ users: AdminUser[] }>(
@@ -184,11 +190,11 @@ export default function AdminUsersPage() {
                     )}
                   </div>
                   <p className="truncate text-sm text-ink-faint">
-                    @{user.username} · {user.postCount} posts
+                    @{user.username} · {t.common.postsCount(user.postCount)}
                   </p>
                 </div>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_STYLES[user.status] ?? ''}`}>
-                  {user.status}
+                  {STATUS_LABELS[user.status] ?? user.status}
                 </span>
               </div>
 

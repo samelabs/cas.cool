@@ -118,7 +118,7 @@ const SHARE_TARGETS: ShareTarget[] = [
   },
   {
     key: 'weibo',
-    label: '微博',
+    label: t.share.weibo,
     icon: <WeiboIcon />,
     href: (url, text) => `https://service.weibo.com/share/share.php?url=${encodeURIComponent(url)}&title=${encodeURIComponent(text)}`,
   },

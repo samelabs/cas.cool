@@ -26,6 +26,24 @@ import { randomUUID } from 'crypto'
 
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads')
 
+/** Public storage root — exported for the upload lifecycle coordination
+ *  (reference writes assert asset availability under the per-URL lock). */
+export const PUBLIC_UPLOAD_DIR = UPLOAD_DIR
+
+/**
+ * Private storage for verification attachments (identity documents). Lives
+ * OUTSIDE public/ — neither Next.js static serving nor the reverse proxy's
+ * /uploads/ rule can reach it; the only read path is the identity-gated
+ * route GET /api/media/verification/[filename] (applicant or admin).
+ * The URL prefix is a routing boundary, NOT the access control — every read
+ * re-checks submission ownership (see the media route).
+ */
+export const PRIVATE_UPLOAD_DIR = path.join(process.cwd(), 'private-uploads')
+
+/** URL prefix returned for private verification media; served only through
+ *  the identity-gated media route, never from a static directory. */
+export const VERIFICATION_MEDIA_PREFIX = '/api/media/verification'
+
 /** Hard cap on the raw uploaded bytes, before any processing. */
 export const MAX_RAW_BYTES = 10 * 1024 * 1024 // 10MB
 
@@ -70,12 +88,15 @@ export type ImageKind = 'jpg' | 'png' | 'webp' | 'gif'
 export type StoredKind = 'webp' | 'gif'
 
 export interface ProcessOptions {
-  /** Tag the image so the pipeline applies the right size/quality preset. */
+  /** Tag the image so the pipeline applies the right size/quality preset —
+   *  and, for 'verification', the storage boundary: verification attachments
+   *  land in PRIVATE storage and get a private URL prefix. */
   purpose?: UploadPurpose
 }
 
 export interface ProcessedImage {
-  /** Public URL path, e.g. /uploads/<uuid>.webp */
+  /** URL path, e.g. /uploads/<uuid>.webp (public) or
+   *  /api/media/verification/<uuid>.webp (private, identity-gated). */
   url: string
   /** Filename only, e.g. <uuid>.webp */
   filename: string
@@ -83,6 +104,8 @@ export interface ProcessedImage {
   bytes: number
   /** Final stored format. */
   kind: StoredKind
+  /** Which storage boundary the file landed in. */
+  storage: 'public' | 'private'
 }
 
 /**
@@ -115,15 +138,22 @@ export async function processAndStoreImage(
   const magicKind = detectImageKind(buffer)
   if (!declaredKind || !magicKind || magicKind !== declaredKind) return null
 
-  await mkdir(UPLOAD_DIR, { recursive: true })
+  // Storage boundary is decided by purpose BEFORE any bytes are written:
+  // verification attachments are identity documents and never touch the
+  // public static tree.
+  const isPrivate = opts.purpose === 'verification'
+  const targetDir = isPrivate ? PRIVATE_UPLOAD_DIR : UPLOAD_DIR
+  const urlPrefix = isPrivate ? VERIFICATION_MEDIA_PREFIX : '/uploads'
+
+  await mkdir(targetDir, { recursive: true })
 
   // Animated GIF: pass through untouched so animation survives — but
   // bounded by the tighter GIF-specific cap (see MAX_GIF_BYTES).
   if (magicKind === 'gif') {
     if (buffer.length > MAX_GIF_BYTES) return null
     const filename = `${randomUUID()}.gif`
-    await writeFile(path.join(UPLOAD_DIR, filename), buffer)
-    return { url: `/uploads/${filename}`, filename, bytes: buffer.length, kind: 'gif' }
+    await writeFile(path.join(targetDir, filename), buffer)
+    return { url: `${urlPrefix}/${filename}`, filename, bytes: buffer.length, kind: 'gif', storage: isPrivate ? 'private' : 'public' }
   }
 
   const preset = PURPOSE_PRESETS[opts.purpose ?? 'post']
@@ -145,6 +175,6 @@ export async function processAndStoreImage(
   }
 
   const filename = `${randomUUID()}.webp`
-  await writeFile(path.join(UPLOAD_DIR, filename), out)
-  return { url: `/uploads/${filename}`, filename, bytes: out.length, kind: 'webp' }
+  await writeFile(path.join(targetDir, filename), out)
+  return { url: `${urlPrefix}/${filename}`, filename, bytes: out.length, kind: 'webp', storage: isPrivate ? 'private' : 'public' }
 }

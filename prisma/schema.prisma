@@ -110,6 +110,8 @@ model User {
   verification        VerificationSubmission?
   postViews           PostView[]
   apiKeys             ApiKey[]
+  postRequestKeys     PostRequestKey[]
+  privateMedia        PrivateMedia[]
 
   @@index([verificationStatus])
   @@index([status])
@@ -357,8 +359,16 @@ model Notification {
   // Set at row creation for outbox events. Informational only — the dedup
   // authority for events is the immutable NotificationDelivery record.
   eventKey    String?          @unique
+  // Reply that most recently surfaced this notification; eventKey remains
+  // the original stamp and NotificationDelivery remains the event authority.
+  replyPostId String?
   read        Boolean          @default(false)
   createdAt   DateTime         @default(now())
+  // Bumped on every re-surface (genuine new event for the same tuple).
+  // Read confirmations are guarded by the revision they observed, so a stale
+  // confirmation can never clear a notification that was re-activated after
+  // the page SELECT — see getNotificationsFirstPage.
+  revision    Int              @default(0)
 
   deliveries  NotificationDelivery[]
 
@@ -369,8 +379,12 @@ model Notification {
   @@index([createdAt])
 
   // Atomic dedup: INSERT ... ON CONFLICT DO UPDATE for postId-based types.
-  // Null-postId types (FOLLOW, MESSAGE) use application-level dedup —
-  // PostgreSQL treats NULL as distinct, so the constraint doesn't apply to them.
+  // Null-postId types (FOLLOW, MESSAGE) are covered by a PARTIAL unique
+  // index `(userId, fromId, type) WHERE "postId" IS NULL` created in
+  // migration 20261030120000_closure_notification_and_request_keys —
+  // PostgreSQL treats NULL as distinct in a plain compound unique, so the
+  // constraint below alone cannot dedup them (deliverNotification upserts
+  // through the partial index arbiter for those types).
   @@unique([userId, fromId, type, postId])
 }
 
@@ -452,4 +466,37 @@ model SideEffectTask {
   updatedAt  DateTime          @updatedAt
 
   @@index([status, createdAt])
+}
+
+/// create_post idempotency (Agent recovery): binds one logical creation to
+/// one (caller, clientRequestId) pair for 24 h. Same key + same content
+/// hash replays the original post; same key + different content is a 409.
+/// Key arbitration and post binding commit in the same transaction as the
+/// post, counters and outbox. Expiry is checked when a key is reused.
+model PostRequestKey {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId   String
+  contentHash String
+  postId      String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, requestId])
+  @@index([createdAt])
+}
+
+/// Ownership of a not-yet-submitted private verification attachment,
+/// written at upload time so the applicant can preview their own ID photos
+/// before submitting. This row is the sole ownership anchor; a referencing
+/// submission adds admin review access. Deliberately NOT a reference for
+/// cleanup: an attachment never submitted is an orphan and the upload sweep
+/// removes both its file (after the grace window) and this stale row.
+model PrivateMedia {
+  filename  String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }

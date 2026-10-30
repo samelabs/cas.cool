@@ -14,14 +14,15 @@ export default async function NotificationsPage() {
 
   // getNotificationsFirstPage handles:
   // 1. Fetch first page (captures original read/unread state for rendering)
-  // 2. Mark as read (silent) — only if there were unread items
+  // 2. Scoped mark-as read (silent) — ONLY the returned rows, at the
+  //    revision they were read at; concurrent arrivals stay unread
   // 3. Opportunistic cleanup — delete read notifications older than 30 days
   // 4. Batch-lookup shortCodes for posts referenced in notifications
-  const { notifications, nextCursor: initialCursor } = await getNotificationsFirstPage(me.id)
+  const { notifications, nextCursor: initialCursor, unreadRemaining } = await getNotificationsFirstPage(me.id)
 
   return (
     <>
-      <NotificationBadgeSync />
+      <NotificationBadgeSync unreadRemaining={unreadRemaining} />
       <PageHeader title={t.notifications.title} subtitle={t.nav.activities(notifications.length)} backHref="/" />
 
       {notifications.length === 0 ? (

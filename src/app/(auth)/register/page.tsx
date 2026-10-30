@@ -95,7 +95,7 @@ export default function RegisterPage() {
       })
       if (!result.ok) throw new Error(result.error || t.auth.errRegisterFailed)
       setAuthUser(result.data!.user)
-      showToast(`Account created — welcome to ${site.name}`, 'success', 2500)
+      showToast(t.auth.welcomeTo(site.name), 'success', 2500)
       router.push(`/u/${username}`)
       router.refresh()
     } catch (err) {
@@ -120,7 +120,7 @@ export default function RegisterPage() {
   return (
     <div>
       <div className="mb-8 text-center">
-        <h1 className="text-2xl font-extrabold text-ink">Join {site.name}</h1>
+        <h1 className="text-2xl font-extrabold text-ink">{t.auth.join(site.name)}</h1>
         <p className="mt-1 text-sm text-ink-faint">
           {site.tagline}
         </p>
