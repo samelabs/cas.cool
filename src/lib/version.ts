@@ -15,4 +15,4 @@
  * Keep a separate CHANGELOG.md file in the repo root for detailed history.
  */
 
-export const VERSION = '1.2.0'
+export const VERSION = '1.2.1'

@@ -1,8 +1,32 @@
 # Changelog
 
 All notable changes to CAS.cool are documented here.
-The open-source release is v1.0.0. The production site runs an iterative
-version (1.1.x) where x increments with each deploy.
+The open-source release is v1.0.0. Subsequent releases run iterative
+versions (1.1.x, then 1.2.x) where the patch number increments with each
+deploy that changes user-visible or operational behaviour.
+
+## [1.2.1] — 2026-10-31
+
+- Removed the "Who to Follow" recommendation block from the right panel.
+  Explore people search, profiles, follow/unfollow and relationship counts
+  are unchanged.
+- Post sitemap shards (`/p/sitemap/<n>.xml`) are now generated once and
+  reused origin-side for one hour across a bounded in-memory tier plus a
+  regenerable on-disk tier that together hold the full shard working set:
+  same-shard requests no longer re-run the full count + 50,000-row query +
+  ~7.5 MB XML assembly per request, concurrent cold requests share one
+  generation, parallel generation across shards is bounded, and memory
+  stays capped. Cache hits never wait on the live-post count (refreshed in
+  the background at most once per 5 s, with failure backoff), and count
+  failures never discard valid cached shards. Responses carry an `Age`
+  header so downstream caches keep the remaining freshness instead of a
+  fresh full hour. Freshness, shard boundaries, URL coverage and the
+  404/empty-urlset edge-case behavior are unchanged.
+- The home page brand bar now complements the sidebar wordmark: the full
+  brand text is visible at every width (sidebar text ≥1280px, top bar below
+  that; previously 768–1279px showed neither).
+- Version fields synchronized at 1.2.1 (package.json, lockfile, VERSION,
+  src/lib/version.ts).
 
 ## [1.2.0] — 2026-10-29
 

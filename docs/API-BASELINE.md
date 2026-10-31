@@ -218,8 +218,15 @@ Account status: `suspended` = rejected at auth (treated as logged out);
 - Site identity, origin and new-key prefix come from `SiteConfig`;
   `/llms.txt`, robots, sitemap and the web manifest use that row.
   Propagation is measured and documented in `docs/FEED-PERF.md`: robots,
-  manifest and sitemap are static with 1 h revalidation; llms.txt
-  is dynamic but reads the same cached row. A database-only change becomes
+  manifest and the root `sitemap.xml` are static with 1 h revalidation;
+  llms.txt and the post sitemap shards (`/p/sitemap/<n>.xml`) are dynamic
+  handlers, the latter reusing each generated shard origin-side for 1 h
+  across a bounded memory tier plus a regenerable disk tier
+  (`x-sitemap-cache: hit|disk|miss|empty`), keying both tiers by the same
+  cached row's origin. Shard responses carry `Age` = seconds already
+  consumed at the source, so the downstream freshness derived from
+  `cache-control: max-age=3600` is the remaining hour, never a fresh full
+  one. A database-only change becomes
   eligible for propagation after revalidation; an immediate switch uses a
   clean build and restart.
 

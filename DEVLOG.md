@@ -1315,3 +1315,50 @@ would turn back-navigation state into a mobile memory liability.
 
 **Pitfalls / Notes:**
 - Browser acceptance remains a development activity; routine CI builds the application once.
+
+### 2026-10-31 — 1.2.1: follow-recommendation removal, sitemap shard result reuse, brand bar breakpoint
+
+**Context:** The "Who to Follow" right-panel block cost a ranked user query on every logged-in page load for little value; the post sitemap shard route is a dynamic route handler, so its `revalidate = 3600` never engaged Next's ISR cache and every shard hit re-counted and re-read up to 50,000 posts (~7.5 MB XML per request); the home brand bar hid at `md` while the sidebar wordmark only appeared at `xl`, leaving 768–1279px without full brand text.
+
+**Changes:**
+- Removed the follow-suggestion capability end to end: RightPanel block/props, ShellLayout wiring, `getFollowSuggestions`, `getSidebarData`/`SidebarData` (no remaining callers), and the `whoToFollow`/`noSuggestions`/`findMorePeople` dictionary entries. `ProfileCard` (Explore people results), `FollowButton`, follow APIs and counters unchanged.
+- New `src/lib/services/sitemap.service.ts`: per-(origin, index) shard XML cache with 1 h TTL in a byte/entry-bounded LRU (48 MiB / 64 entries, state on globalThis like the prisma client), single-flight coalescing, ≤2 parallel generations (slot semaphore, released in `finally`), live-post count cached 5 s and shared by `robots.txt` (same `deletedAt: null` rule), generation streamed in 10k cursor-forward batches of the identical `(createdAt desc, id desc)` skip/take window. Route keeps the 404/empty edge contracts and reports `x-sitemap-cache: hit|miss|empty`; the dead `revalidate` export is gone. `src/lib/sitemap.ts` gained `formatUrlRow`/`joinUrlsetXml`/`EMPTY_URLSET` (output byte-identical) and stays DB/Next-free; unit tests for the cache semantics live in `src/lib/services/sitemap.service.test.ts` with mocked DB/site.
+- Home page brand bar: `md:hidden` → `xl:hidden` (visible below 1280px, complementing the sidebar wordmark at xl); avatar menu and bottom nav keep their mobile breakpoints.
+- Version 1.2.1 across package.json, package-lock.json (top + packages[""]), VERSION, src/lib/version.ts; CHANGELOG 1.2.1 entry and header note refreshed; ARCHITECTURE/API-BASELINE sitemap contract text synced.
+
+**Pitfalls / Notes:**
+- Next 16 route handlers with dynamic params never enter the ISR cache regardless of `revalidate` — cache claims must be verified against actual request behavior, not config exports.
+- The shard cache lives on globalThis because Turbopack can re-instantiate modules per route segment (same reason the prisma client is global-cached); otherwise robots and the route would hold separate counts.
+- Origin changes invalidate via cache key (entries record the origin they were generated with); after `revalidateSiteConfig()` revalidates the data cache, new keys miss and regenerate — never serving the old domain persistently.
+- Publish/edit/delete paths deliberately touch nothing: freshness is TTL-window only (shards 1 h, count 5 s, robots ISR 1 h), so posting stays O(1).
+
+### 2026-10-31 — 1.2.1 closeout round 2: two-tier sitemap shard cache, non-blocking count, Age header
+
+**Context:** Reviewer reproduction of three issues in round 1: a ~16-shard working set thrashed the 48 MiB in-process cap (two full miss rounds per sweep); every request still gated on the live-post COUNT before its cache lookup (a lapsed 5 s window blocked a valid hit on a recount, and a count failure failed the request); and responses re-advertised a full `max-age=3600` regardless of source-side age, so end-to-end freshness could reach ~2 h.
+
+**Changes:**
+- Two-tier reuse in `src/lib/services/sitemap.service.ts`: the memory LRU (48 MiB / 64 entries, unchanged) is now backed by a disk tier — XML atomically published (tmp + rename) under `.next/cache/sitemap-shards/<origin-hash>/` (relocatable via `SITEMAP_CACHE_DIR`), filenames `shard-<index>-<storedAtMs>.xml` so freshness never depends on mtimes. Bounded pruning after publishes: TTL-expired files, superseded versions per index, orphaned tmp files, 64-file cap (oldest first). Evicted-from-memory shards are re-served from disk without re-querying; single-flight now covers read-or-generate; the ≤2-generation semaphore is unchanged.
+- Cache hits never touch the DB: a fresh count range-gates the hit (shard removal still converges within the 5 s window); a lapsed window triggers a background count refresh (backoff-limited to one attempt per window — no periodic scanner, no per-hit retry storm) while the valid XML is returned immediately. Count failures are logged and never discard cached results; only the miss path (which must range-gate) and robots.txt await the count.
+- `Age` correctness: results carry `ageSeconds` since their generation stamp (memory entry or disk filename) and the route emits it as `Age`, so downstream caches derive the remaining hour. Near-expiry responses no longer grant a fresh full hour (unit- and HTTP-verified).
+- Docs/tests: ARCHITECTURE/API-BASELINE describe the two tiers, caps, honest reuse/eviction behavior and Age; the "dynamic params never ISR" phrasing was narrowed to this route's actually measured Next 16.4.3 behavior. Unit tests cover disk reuse after memory eviction/reset, count-lapsed hot hits, background-refresh failure backoff, the fresh-count shrink gate and Age at 3,590 s; the API contract gained an Age/`x-sitemap-cache` regression.
+
+**Pitfalls / Notes:**
+- Tier-2 freshness keys off the filename stamp, not mtime — mtime-based TTL breaks under test clocks and after file copies.
+- The cache root is resolved once per request and threaded through read/publish/prune, so an env relocation cannot split a request's read/write pair across two roots.
+- Disk-tier unit tests need iteration-bounded waits (fake clock makes wall-clock deadlines loop forever) and an afterEach settle+retry cleanup: publishes are fire-and-forget by design.
+- Working-set probe (16 full shards, throwaway DB, production build) stays out of the repo/CI by design; it is a development-time activity.
+
+### 2026-10-31 — 1.2.1 closeout round 3: cold generation task owns its publish
+
+**Context:** Round 2 published tier-2 shards fire-and-forget: the generation slot was released when the rows finished (not after the publish), so publishes drifted outside the ≤2 bound, and the single-flight record was cleared when the response returned — an L1 eviction before the first publish completed started a duplicate generation and re-query. Cold responses also reported `Age: 0` even though the publish wait had consumed time.
+
+**Changes:**
+- `src/lib/services/sitemap.service.ts`: one generation slot now spans the whole cold task — rows → memory store → atomic disk publish (tmp + rename) → bounded cleanup — released in `finally` only after the publish ends; `generateShard` became a pure rows→XML helper (slot ownership moved to the task). The per-key in-flight record lives until the publish or its failure handling completes, so same-key requests arriving after an L1 eviction join the running task instead of regenerating. The memory result is stored before the publish, keeping it servable when the disk write fails; no queue, scheduler or resident task was added — everything is awaited inline.
+- Cold `ageSeconds` is computed after the awaited publish, so the returned `Age` reflects actually consumed time including the write wait.
+- Tests (`sitemap.service.test.ts`): a test-layer write barrier (mocked `node:fs/promises` writeFile with a deterministic gate + failure switch) pins the lifecycle — slow writes hold cold-task concurrency to exactly 2 slot-spanning tasks; a same-key request after a full memory reset mid-publish coalesces onto the running task with no extra query; a failed publish keeps serving the memory result and releases both the slot and the single-flight record (verified by regeneration retry and two gated fresh tasks both reaching their publish).
+- ARCHITECTURE sitemap bullet updated to state the slot scope, the publish-complete single-flight lifetime and the publish-inclusive Age.
+
+**Pitfalls / Notes:**
+- The write barrier must be a plain function inside the `vi.mock` factory: `vi.resetAllMocks()` must not strip it, and gate/failure state lives in `vi.hoisted` objects reset per test.
+- Awaiting the publish inside the request is deliberate: it is the price of the bounded lifecycle, and it shows up in `Age` rather than being hidden.
+- The big-shard disk-tier unit test got slower (each request now waits out its 7.2 MB publish); kept at 7 full-size shards since the byte-cap eviction path needs real sizes.

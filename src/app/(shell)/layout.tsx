@@ -8,7 +8,7 @@ import { getLayoutData } from '@/lib/services/layout.service'
 export default async function ShellLayout({ children }: { children: React.ReactNode }) {
   const currentUser = await getCurrentUser()
 
-  const { trending, suggestions, notificationCount, messageCount, needsDocuments } =
+  const { trending, notificationCount, messageCount, needsDocuments } =
     await getLayoutData(currentUser?.id ?? null, currentUser?.verificationStatus)
 
   return (
@@ -32,7 +32,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
 
         {/* Right panel — hidden below lg */}
         <aside className="sticky top-0 hidden max-h-[100dvh] w-[350px] shrink-0 overflow-y-auto lg:block">
-          <RightPanel trending={trending} suggestions={suggestions} />
+          <RightPanel trending={trending} />
         </aside>
       </div>
 

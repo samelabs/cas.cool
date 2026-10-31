@@ -1411,6 +1411,20 @@ describe('post sitemap shard lifecycle across the 50,000 boundary', () => {
   function locs(xml: string): Set<string> {
     return new Set([...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]))
   }
+  /** Bounded poll for robots.txt convergence. The live-post count shared by
+   *  robots.txt and the shard range gate refreshes at most once per 5s
+   *  (src/lib/services/sitemap.service.ts); the margin covers a loaded suite. */
+  async function pollRobots(predicate: (text: string) => boolean, deadlineMs = 20_000): Promise<string> {
+    const deadline = Date.now() + deadlineMs
+    let text = ''
+    for (;;) {
+      text = await (await api('/robots.txt', { signal: AbortSignal.timeout(30_000) })).text()
+      if (predicate(text)) return text
+      if (Date.now() > deadline) break
+      await new Promise((r) => setTimeout(r, 500))
+    }
+    throw new Error(`robots.txt did not converge within ${deadlineMs}ms; last served:\n${text}`)
+  }
 
   it('out-of-range and overflowing shard indices answer 200 with an empty urlset, never 404 or 500', async () => {
     const beyond = await api('/p/sitemap/9.xml')
@@ -1433,17 +1447,19 @@ describe('post sitemap shard lifecycle across the 50,000 boundary', () => {
     // Explicit per-test budget (not a global timeout raise): the 50,001-row
     // fixture plus two full 50k-URL shard renders exceed the 30s default
     // when the whole suite shares one machine (observed in the 1.2.0 audit
-    // rerun). Every request is bounded so a hang fails fast with a cause.
-    const FETCH_TIMEOUT = { signal: AbortSignal.timeout(25_000) }
+    // rerun); since the shard publish is awaited inside the request (1.2.1
+    // closeout), 25s proved too tight under full-suite load. Every request
+    // stays bounded so a hang fails fast with a cause.
+    const FETCH_TIMEOUT = { signal: AbortSignal.timeout(60_000) }
     const [author] = await sql<{ id: string; username: string }>(
       `INSERT INTO "User" (id, email, username, "passwordHash", "postCount", "createdAt", "updatedAt")
        VALUES ('rc50k_author', 'rc50k@example.test', 'rc50k_author', 'x', 0, now(), now())
        ON CONFLICT (email) DO UPDATE SET username = EXCLUDED.username RETURNING id, username`,
     )
 
-    // --- Below the boundary: single shard ---
-    const before = await api('/p/sitemap/0.xml', FETCH_TIMEOUT)
-    expect(before.status).toBe(200)
+    // --- Below the boundary: single shard advertised. No shard fetch here —
+    // the crossing assertions below need both shards to be first-generation
+    // in this server process (shard XML is cached origin-side for 1h). ---
     const robotsBefore = await (await api('/robots.txt', FETCH_TIMEOUT)).text()
     expect(robotsBefore).toContain('/p/sitemap/0.xml')
     expect(robotsBefore).not.toContain('/p/sitemap/1.xml')
@@ -1462,10 +1478,12 @@ describe('post sitemap shard lifecycle across the 50,000 boundary', () => {
     )
     expect(Number(total)).toBeGreaterThan(50_000)
 
-    const robotsAfter = await (await api('/robots.txt', FETCH_TIMEOUT)).text()
+    // The shared count refreshes within its 5s window: robots converges to
+    // advertising shard 1 (bounded poll — never frozen at boot).
+    const robotsAfter = await pollRobots(
+      (t) => t.includes('/p/sitemap/1.xml') && !t.includes('/p/sitemap/2.xml'),
+    )
     expect(robotsAfter).toContain('/p/sitemap/0.xml')
-    expect(robotsAfter).toContain('/p/sitemap/1.xml')
-    expect(robotsAfter).not.toContain('/p/sitemap/2.xml')
 
     const shard0 = await api('/p/sitemap/0.xml', FETCH_TIMEOUT)
     const shard1 = await api('/p/sitemap/1.xml', FETCH_TIMEOUT)
@@ -1485,14 +1503,34 @@ describe('post sitemap shard lifecycle across the 50,000 boundary', () => {
     expect(union.size).toBe(Number(total))
     expect([...locations0].filter((loc) => locations1.has(loc))).toEqual([])
 
-    // --- Cross downward: tombstone the bulk posts, shard 1 empties (not 404) ---
+    // --- Cross downward: tombstone the bulk posts; robots drops shard 1
+    // within the count window and shard 1 serves the valid EMPTY urlset
+    // (range gate), never its cached content and never 404. ---
     await sql(`UPDATE "Post" SET "deletedAt" = now() WHERE id LIKE 'rc50k\\_%'`)
-    const robotsShrunk = await (await api('/robots.txt', FETCH_TIMEOUT)).text()
-    expect(robotsShrunk).not.toContain('/p/sitemap/1.xml')
+    const robotsShrunk = await pollRobots((t) => !t.includes('/p/sitemap/1.xml'))
+    expect(robotsShrunk).toContain('/p/sitemap/0.xml')
     const shard1Empty = await api('/p/sitemap/1.xml', FETCH_TIMEOUT)
     expect(shard1Empty.status).toBe(200)
     expect(countUrls(await shard1Empty.text())).toBe(0)
   }, 120_000)
+
+  it('served shards carry Age so downstream freshness is the remaining hour', async () => {
+    // Whatever the source has already consumed must be subtracted: a
+    // response near source expiry must not grant a fresh full hour.
+    const first = await api('/p/sitemap/0.xml')
+    expect(first.status).toBe(200)
+    const age0 = Number(first.headers.get('age'))
+    expect(Number.isInteger(age0)).toBe(true)
+    expect(age0).toBeGreaterThanOrEqual(0)
+
+    await new Promise((r) => setTimeout(r, 1200))
+    const second = await api('/p/sitemap/0.xml')
+    expect(['hit', 'disk']).toContain(second.headers.get('x-sitemap-cache'))
+    const age1 = Number(second.headers.get('age'))
+    expect(Number.isInteger(age1)).toBe(true)
+    expect(age1).toBeGreaterThan(age0) // consumed source time is visible
+    expect(age1).toBeLessThan(3600) // and never a fresh full hour on reuse
+  })
 })
 
 describe('report resolve side-effect outbox (fault injection)', () => {
