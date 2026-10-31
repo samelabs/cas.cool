@@ -1,7 +1,5 @@
 import Link from 'next/link'
-import { ProfileCard } from '@/components/profile/ProfileCard'
-import { SearchIcon, TrendingIcon, SparklesIcon } from '@/components/icons'
-import type { SafeUser } from '@/lib/types'
+import { SearchIcon, TrendingIcon } from '@/components/icons'
 import { t } from '@/lib/i18n'
 import { VERSION } from '@/lib/version'
 import { getSiteConfig } from '@/lib/site'
@@ -14,7 +12,6 @@ export interface TrendingChemical {
 
 export interface RightPanelProps {
   trending?: TrendingChemical[]
-  suggestions?: SafeUser[]
 }
 
 function TrendingRow({ rank, item }: { rank: number; item: TrendingChemical }) {
@@ -39,7 +36,7 @@ function TrendingRow({ rank, item }: { rank: number; item: TrendingChemical }) {
   )
 }
 
-export async function RightPanel({ trending = [], suggestions = [] }: RightPanelProps) {
+export async function RightPanel({ trending = [] }: RightPanelProps) {
   const site = await getSiteConfig()
   return (
     <div className="flex h-full w-full flex-col gap-4 px-4 py-2">
@@ -80,30 +77,6 @@ export async function RightPanel({ trending = [], suggestions = [] }: RightPanel
           className="block border-t border-line/50 px-4 py-3 text-sm text-brand hover:bg-surface-hover"
         >
           {t.common.showMore}
-        </Link>
-      </section>
-
-      {/* Who to follow */}
-      <section className="overflow-hidden rounded-2xl bg-surface-hover/50">
-        <h2 className="flex items-center gap-2 px-4 py-3 text-lg font-bold text-ink">
-          <SparklesIcon className="h-5 w-5 text-info" />
-          {t.explore.whoToFollow}
-        </h2>
-        {suggestions.length > 0 ? (
-          <div className="flex flex-col">
-            {suggestions.slice(0, 3).map((user) => (
-              <ProfileCard key={user.id} user={user} />
-            ))}
-          </div>
-        ) : (
-          <p className="px-4 pb-4 text-sm text-ink-muted">{t.explore.noSuggestions}</p>
-        )}
-        <Link
-          prefetch={false}
-          href="/explore"
-          className="block border-t border-line px-4 py-3 text-sm text-brand hover:bg-surface-hover"
-        >
-          {t.explore.findMorePeople}
         </Link>
       </section>
 

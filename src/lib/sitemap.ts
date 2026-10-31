@@ -1,7 +1,8 @@
 /**
  * Sitemap sharding primitives — shared by the post sitemap shard route and
  * robots.txt. Kept pure (no DB, no Next imports) so boundary behavior is
- * unit-testable.
+ * unit-testable. Result reuse (in-process shard cache, count window, single-
+ * flight generation) lives in src/lib/services/sitemap.service.ts.
  *
  * Shard lifecycle contract:
  * - Shards are stateless. ANY numeric shard index answers at request time;
@@ -69,21 +70,31 @@ function escapeXml(value: string): string {
     .replaceAll("'", '&apos;')
 }
 
-/** Serialize a sitemap <urlset> document by hand (shard routes are plain
- *  route handlers, not Next metadata routes). */
-export function buildUrlsetXml(entries: SitemapEntry[]): string {
-  const urls = entries.map((entry) => {
-    let url = `  <url><loc>${escapeXml(entry.url)}</loc>`
-    if (entry.lastModified) url += `<lastmod>${toW3CDate(entry.lastModified)}</lastmod>`
-    if (entry.changeFrequency) url += `<changefreq>${entry.changeFrequency}</changefreq>`
-    if (entry.priority !== undefined) url += `<priority>${entry.priority.toFixed(1)}</priority>`
-    return `${url}</url>`
-  })
+/** Serialize one <url> row of a urlset document. */
+export function formatUrlRow(entry: SitemapEntry): string {
+  let url = `  <url><loc>${escapeXml(entry.url)}</loc>`
+  if (entry.lastModified) url += `<lastmod>${toW3CDate(entry.lastModified)}</lastmod>`
+  if (entry.changeFrequency) url += `<changefreq>${entry.changeFrequency}</changefreq>`
+  if (entry.priority !== undefined) url += `<priority>${entry.priority.toFixed(1)}</priority>`
+  return `${url}</url>`
+}
+
+/** Assemble a urlset document from pre-serialized <url> rows. */
+export function joinUrlsetXml(rows: string[]): string {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
-    ...urls,
+    ...rows,
     '</urlset>',
     '',
   ].join('\n')
 }
+
+/** Serialize a sitemap <urlset> document by hand (shard routes are plain
+ *  route handlers, not Next metadata routes). */
+export function buildUrlsetXml(entries: SitemapEntry[]): string {
+  return joinUrlsetXml(entries.map(formatUrlRow))
+}
+
+/** Prebuilt empty document — beyond-range/overflow indices answer with this. */
+export const EMPTY_URLSET = buildUrlsetXml([])

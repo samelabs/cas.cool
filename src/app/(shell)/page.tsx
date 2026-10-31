@@ -41,12 +41,14 @@ export default async function HomePage({
   return (
     <>
       {/*
-       * Header below the sidebar's md breakpoint:
+       * Header below the sidebar's xl breakpoint — complements the sidebar
+       * wordmark (icon-only from md, icon+text at xl):
        *   [avatar]    [centered logo]    [spacer]
-       * Avatar opens MobileMenuDrawer (slide-in panel with full nav).
-       * At md and above, the sidebar supplies the brand and navigation.
+       * Avatar opens MobileMenuDrawer (slide-in panel with full nav) and
+       * stays mobile-only; at md–xl the icon sidebar carries navigation
+       * while this bar carries the full brand text.
        */}
-      <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur-md md:hidden">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur-md xl:hidden">
         <div className="flex h-[53px] items-center px-4">
           {me ? (
             <div className="md:hidden">
@@ -58,7 +60,7 @@ export default async function HomePage({
             <div className="md:hidden w-9" />
           )}
 
-          {/* Centered brand while the sidebar is hidden. */}
+          {/* Centered brand while the sidebar shows no wordmark. */}
           <div className="flex flex-1 justify-center">
             <Link href="/" className="flex items-center gap-1.5">
               <FlaskIcon className="h-5 w-5 text-brand" />

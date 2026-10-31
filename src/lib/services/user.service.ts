@@ -1,12 +1,12 @@
 /**
- * User service — profile lookups, trending, suggestions.
+ * User service — profile lookups and trending chemicals.
  * Shared by Server Components (SSR) and Server Actions.
  */
 
 import { cache } from 'react'
 import { prisma } from '@/lib/db'
 import { unstable_cache, revalidateTag } from 'next/cache'
-import { userSelect, serializeUser, serializeUsers } from '@/lib/serialize'
+import { userSelect, serializeUser } from '@/lib/serialize'
 import type { SafeUser } from '@/lib/types'
 
 // ─── User Lookups ─────────────────────────────────────────────
@@ -83,27 +83,5 @@ export function revalidateTrending() {
     revalidateTag(TRENDING_TAG, 'max')
   } catch (error) {
     console.error('[Trending] cache revalidation failed:', error)
-  }
-}
-
-// ─── Follow Suggestions ───────────────────────────────────────
-
-export async function getFollowSuggestions(
-  userId: string,
-  limit: number = 5,
-): Promise<SafeUser[]> {
-  try {
-    const users = await prisma.user.findMany({
-      where: {
-        id: { not: userId },
-        followers: { none: { followerId: userId } },
-      },
-      select: userSelect,
-      orderBy: { followerCount: 'desc' },
-      take: limit,
-    })
-    return serializeUsers(users)
-  } catch {
-    return []
   }
 }

@@ -9,7 +9,7 @@ export interface ProfileCardProps {
   initialFollowing?: boolean
 }
 
-/** Compact user card used in "Who to Follow" suggestions. Server-compatible. */
+/** Compact user card used in Explore people results. Server-compatible. */
 export function ProfileCard({ user, initialFollowing = false }: ProfileCardProps) {
   const displayName = user.displayName || user.username
   return (

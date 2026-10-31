@@ -89,8 +89,8 @@ export default function FollowButton({
       if (!result.ok) {
         throw new Error(result.error || t.profile.requestFailed)
       }
-      // Refresh SSR data so other FollowButton instances (RightPanel suggestions,
-      // profile page) reflect the new follow state without a manual page reload.
+      // Refresh SSR data so other FollowButton instances (profile page,
+      // Explore people results) reflect the new follow state without a manual reload.
       router.refresh()
       showToast(result.data!.following ? t.profile.followed : t.profile.unfollowed, 'success', 2000)
     } catch (err) {
