@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { provisionTestDatabase, dropTestDatabase, sql } from './helpers/db'
-import { TEST_DATABASE_URL, SERVER_URL } from './helpers/env'
+import { TEST_DATABASE_URL, SERVER_URL, TEST_UPLOAD_DIR, TEST_PRIVATE_UPLOAD_DIR } from './helpers/env'
 import { startTestServer, stopTestServer } from './helpers/server'
 import { api, registerAndLogin, type Session } from './helpers/http'
 
@@ -80,7 +80,7 @@ describe('R1 private attachment ownership cannot be claimed', () => {
     const upload = await fetch(`${SERVER_URL}/api/upload`, { method: 'POST', headers: { Cookie: cookie }, body: form })
     expect(upload.status).toBe(201)
     const image = (await upload.json()) as { url: string; filename: string }
-    syntheticFiles.push(path.join('private-uploads', image.filename))
+    syntheticFiles.push(path.join(TEST_PRIVATE_UPLOAD_DIR, image.filename))
     return image.url
   }
 
@@ -291,13 +291,16 @@ describe('R5 sweep and reference writes are mutually exclusive', () => {
   it('a REAL reference write committing after the final check cannot dangle (lock serializes)', async () => {
     const name = randomUUID() + '.webp'
     const url = `/uploads/${name}`
-    const publicDir = path.join(process.cwd(), 'public', 'uploads')
+    // The configured public root — the SAME physical directory the app's
+    // reference-write path resolves (helpers/env.ts provides it to both the
+    // test process and the spawned server).
+    const publicDir = TEST_UPLOAD_DIR
     await (await import('node:fs/promises')).mkdir(publicDir, { recursive: true })
     const file = path.join(publicDir, name)
     await writeFile(file, 'synthetic')
     const old = new Date(Date.now() - 48 * 3600_000)
     await utimes(file, old, old)
-    const dirs = { public: publicDir, private: path.join(process.cwd(), 'private-uploads') }
+    const dirs = { public: TEST_UPLOAD_DIR, private: TEST_PRIVATE_UPLOAD_DIR }
 
     const { sweepUploadFile } = await import('@/lib/upload-sweep')
     const { assertUploadAssetsAvailable } = await import('@/lib/upload-lifecycle')

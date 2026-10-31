@@ -42,7 +42,9 @@ server {
         access_log off;
     }
 
-    # Uploaded media files
+    # Uploaded media files — this alias MUST resolve to the SAME physical
+    # storage as the app's UPLOAD_DIR env (follow symlinks when comparing;
+    # see deploy/README.md §5 and src/lib/media-storage.ts).
     location /uploads/ {
         alias ${APP_DIR}/public/uploads/;
         expires 30d;

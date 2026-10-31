@@ -125,7 +125,8 @@ Re-run both before changing ranking or dedup semantics.
 ```bash
 psql -d postgres -c "CREATE ROLE cascool LOGIN PASSWORD 'cascool' CREATEDB;"
 psql -d postgres -c "CREATE DATABASE cascool OWNER cascool;"
-cp .env.example .env   # set DATABASE_URL to the above, set JWT_SECRET
+cp .env.example .env   # set DATABASE_URL to the above, set JWT_SECRET,
+                       # set UPLOAD_DIR / PRIVATE_UPLOAD_DIR (absolute paths)
 npm ci
 npm run db:generate
 npm run db:deploy
@@ -150,8 +151,32 @@ pm2 startOrReload ecosystem.config.cjs
 
 PM2 runs the Next.js process from the application directory (`ecosystem.config.cjs` uses `__dirname` without hardcoded system paths). Nginx (reference templates and setup guide in `deploy/`) terminates TLS, forwards client IP headers (`X-Real-IP`, `X-Forwarded-For`), and serves `/_next/static/` and `/uploads/` directly. Dynamic `/llms.txt` proxies to Next.js. Logs live in `logs/` (gitignored).
 
-Keep `private-uploads/` in persistent storage across releases and include it
-in backups. During the closure release window, pause writes and handle legacy
+## Media storage configuration
+
+Media roots are **server runtime** configuration, read from the process
+environment by `src/lib/media-storage.ts`:
+
+- `UPLOAD_DIR` — physical root for public post media, served at `/uploads/`.
+- `PRIVATE_UPLOAD_DIR` — physical root for private verification attachments,
+  readable only through the identity-gated `GET /api/media/verification/[filename]`.
+
+Rules:
+
+- Both must be **absolute paths** and **disjoint directory trees** (a missing,
+  relative, or overlapping pair fails loudly at the first media operation —
+  there is no cwd fallback). Symlinks to shared storage outside the app
+  directory are fine and are the reason this is runtime env: a literal
+  cwd-joined media path would be statically followed by the Next.js build's
+  output file tracing and drag shared storage into the build.
+- These values must never be inlined via the `next.config` `env` field or a
+  `NEXT_PUBLIC_*` name — they are runtime configuration, not build constants.
+- The reverse proxy's `/uploads/` alias MUST map to the **same physical
+  storage** `UPLOAD_DIR` points at (when the proxy serves `/uploads/`
+  directly). A mismatch makes the app and the proxy disagree about what
+  exists.
+
+Keep both roots in persistent storage across releases and include them in
+backups. During the closure release window, pause writes and handle legacy
 public verification files once: establish their private ownership records,
 update references, remove public copies and clear any cached public URLs,
 then verify owner/admin reads before reopening writes.

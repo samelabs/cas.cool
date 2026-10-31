@@ -10,7 +10,7 @@ import { Pool } from 'pg'
 import type { PrismaClient } from '@prisma/client'
 import sharp from 'sharp'
 import { provisionTestDatabase, dropTestDatabase, sql } from './helpers/db'
-import { TEST_DATABASE_URL, SERVER_URL } from './helpers/env'
+import { TEST_DATABASE_URL, SERVER_URL, TEST_PRIVATE_UPLOAD_DIR } from './helpers/env'
 import { startTestServer, stopTestServer } from './helpers/server'
 import { api, registerAndLogin, type Session } from './helpers/http'
 
@@ -50,9 +50,10 @@ afterAll(async () => {
 })
 
 function privateUploadDir(): string {
-  // Mirrors src/lib/image.ts PRIVATE_UPLOAD_DIR; used only to clean up the
-  // synthetic verification fixture after the run.
-  return 'private-uploads'
+  // The suite's configured private root (helpers/env.ts — the same
+  // PRIVATE_UPLOAD_DIR the app and the spawned server read); used only to
+  // clean up the synthetic verification fixture after the run.
+  return TEST_PRIVATE_UPLOAD_DIR
 }
 
 // ── B1: duplicate follow must not re-surface a read notification ──

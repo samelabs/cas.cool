@@ -24,11 +24,12 @@
 
 import { readdir, stat, unlink } from 'node:fs/promises'
 import { prisma } from '@/lib/db'
-import { UPLOAD_GRACE_MS, UPLOAD_DIRS } from '@/lib/upload-sweep-config'
+import { UPLOAD_GRACE_MS } from '@/lib/upload-sweep-config'
+import { resolveUploadDirs } from '@/lib/media-storage'
 import { isReferenced } from '@/lib/upload-cleanup'
 import { lockUploadAssets, uploadAssetFromFile, uploadAssetPath } from '@/lib/upload-lifecycle'
 
-export { UPLOAD_GRACE_MS, UPLOAD_DIRS }
+export { UPLOAD_GRACE_MS }
 
 export interface SweepFileOutcome {
   file: string
@@ -54,7 +55,7 @@ export async function sweepUploadFile(
   storage: 'public' | 'private',
   filename: string,
   now = Date.now(),
-  dirs: Record<'public' | 'private', string> = UPLOAD_DIRS,
+  dirs?: Record<'public' | 'private', string>,
 ): Promise<SweepFileOutcome> {
   // One asset identity (upload-lifecycle.ts): the canonical URL built from
   // the stored name is the lock identity and the reference identity. A file
@@ -63,7 +64,7 @@ export async function sweepUploadFile(
   const asset = uploadAssetFromFile(storage, filename)
   if (!asset) throw new Error(`Unrecognized upload filename: ${filename}`)
   const url = asset.url
-  const filePath = uploadAssetPath(asset, dirs)
+  const filePath = uploadAssetPath(asset, dirs ?? resolveUploadDirs())
 
   let fileStat
   try {
@@ -103,20 +104,22 @@ export async function sweepUploadFile(
 }
 
 /** Sweep both storage trees. `now` injectable for tests; `dirs` overrides
- *  the storage roots (tests point them at temp directories). */
+ *  the storage roots (tests point them at temp directories), defaulting to
+ *  the shared media-storage config. */
 export async function sweepUploads(
   now = Date.now(),
-  dirs: Record<'public' | 'private', string> = UPLOAD_DIRS,
+  dirs?: Record<'public' | 'private', string>,
 ): Promise<SweepOutcome> {
+  const roots = dirs ?? resolveUploadDirs()
   const outcome: SweepOutcome = { scanned: 0, deleted: 0, staleOwnershipRowsRemoved: 0, outcomes: [], errors: [] }
 
   for (const storage of ['public', 'private'] as const) {
     let entries: string[]
     try {
-      entries = await readdir(dirs[storage])
+      entries = await readdir(roots[storage])
     } catch (error: unknown) {
       if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) {
-        outcome.errors.push({ file: dirs[storage], error: error instanceof Error ? error.message : String(error) })
+        outcome.errors.push({ file: roots[storage], error: error instanceof Error ? error.message : String(error) })
       }
       continue
     }
@@ -124,7 +127,7 @@ export async function sweepUploads(
       if (filename.startsWith('.')) continue
       outcome.scanned += 1
       try {
-        const result = await sweepUploadFile(storage, filename, now, dirs)
+        const result = await sweepUploadFile(storage, filename, now, roots)
         outcome.outcomes.push(result)
         if (result.action === 'deleted') outcome.deleted += 1
       } catch (e: unknown) {

@@ -3,8 +3,8 @@
  *
  * ── One asset identity ───────────────────────────────────────────────
  * An upload reference is accepted ONLY in its canonical form:
- *   /uploads/<name>                 → public storage  (public/uploads)
- *   /api/media/verification/<name>  → private storage (private-uploads)
+ *   /uploads/<name>                 → public storage  (UPLOAD_DIR)
+ *   /api/media/verification/<name>  → private storage (PRIVATE_UPLOAD_DIR)
  * where <name> is a single path segment matching CANONICAL_UPLOAD_NAME
  * (no separators, no dots besides the one extension, no escapes). Because
  * the grammar admits exactly one spelling per physical file, the canonical
@@ -52,7 +52,11 @@
 import path from 'node:path'
 import { stat } from 'node:fs/promises'
 import { Prisma, type PrismaClient } from '@prisma/client'
-import { PUBLIC_UPLOAD_DIR, PRIVATE_UPLOAD_DIR, VERIFICATION_MEDIA_PREFIX } from '@/lib/image'
+import {
+  PUBLIC_UPLOAD_URL_PREFIX,
+  VERIFICATION_MEDIA_PREFIX,
+  resolveUploadDirs,
+} from '@/lib/media-storage'
 import { PostServiceError } from '@/lib/services/post-core.service'
 
 export type UploadStorage = 'public' | 'private'
@@ -70,13 +74,8 @@ export interface UploadAsset {
 const CANONICAL_UPLOAD_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.(?:webp|gif)$/
 
 const PREFIX: Record<UploadStorage, string> = {
-  public: '/uploads/',
+  public: `${PUBLIC_UPLOAD_URL_PREFIX}/`,
   private: `${VERIFICATION_MEDIA_PREFIX}/`,
-}
-
-const DEFAULT_DIRS: Record<UploadStorage, string> = {
-  public: PUBLIC_UPLOAD_DIR,
-  private: PRIVATE_UPLOAD_DIR,
 }
 
 /** Lock-space class for upload assets (ASCII "UPLD"); see header. */
@@ -99,12 +98,13 @@ export function parseUploadUrl(url: string, storage?: UploadStorage): UploadAsse
   return null
 }
 
-/** Physical location of an asset (dirs injectable for tests/sweep). */
+/** Physical location of an asset. Roots come from the shared media-storage
+ *  config unless explicitly injected (tests/sweep fixtures). */
 export function uploadAssetPath(
   asset: UploadAsset,
-  dirs: Record<UploadStorage, string> = DEFAULT_DIRS,
+  dirs?: Record<UploadStorage, string>,
 ): string {
-  return path.join(dirs[asset.storage], asset.filename)
+  return path.join((dirs ?? resolveUploadDirs())[asset.storage], asset.filename)
 }
 
 /**
