@@ -8,7 +8,7 @@ import sharp from 'sharp'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { provisionTestDatabase, dropTestDatabase, promoteUser, sql } from './helpers/db'
-import { SERVER_URL, TEST_DATABASE_URL } from './helpers/env'
+import { SERVER_URL, TEST_DATABASE_URL, TEST_PRIVATE_UPLOAD_DIR, TEST_UPLOAD_DIR } from './helpers/env'
 import { startTestServer, stopTestServer } from './helpers/server'
 import { api, registerAndLogin, type Session } from './helpers/http'
 
@@ -119,8 +119,10 @@ it('successive replies update REST/MCP context while retrying an old event remai
 
 it('a submission committed after a stale ownership scan preserves its anchor and preview', async () => {
   const name = randomUUID() + '.webp', url = '/api/media/verification/' + name
-  const file = path.join('private-uploads', name)
-  await mkdir('private-uploads', { recursive: true })
+  // The suite's configured private root (helpers/env.ts) — the same physical
+  // directory the server's availability assertion resolves.
+  const file = path.join(TEST_PRIVATE_UPLOAD_DIR, name)
+  await mkdir(TEST_PRIVATE_UPLOAD_DIR, { recursive: true })
   await writeFile(file, await sharp({ create: { width: 4, height: 4, channels: 3, background: '#00aa00' } }).webp().toBuffer())
   files.push(file)
   await db.prisma.privateMedia.create({ data: { filename: name, userId: cid, createdAt: new Date(Date.now() - 25 * 3600_000) } })
@@ -158,7 +160,7 @@ it('ack validates the complete batch before writing, including the database inte
 
 it('locked upload cleanup needs only its own transaction connection', async () => {
   const name = randomUUID() + '.webp', url = '/uploads/' + name
-  const file = path.join('public', 'uploads', name)
+  const file = path.join(TEST_UPLOAD_DIR, name)
   await mkdir(path.dirname(file), { recursive: true }); await writeFile(file, 'synthetic')
   files.push(file)
   const { PrismaClient } = await import('@prisma/client')

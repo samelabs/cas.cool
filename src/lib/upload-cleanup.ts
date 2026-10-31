@@ -8,8 +8,8 @@
  *   - verificationSubmission.idFrontImage / idBackImage
  *
  * Two storage boundaries, one reference-counted cleanup:
- *   /uploads/<file>                → public/uploads   (public post media)
- *   /api/media/verification/<file> → private-uploads  (identity documents,
+ *   /uploads/<file>                → UPLOAD_DIR        (public post media)
+ *   /api/media/verification/<file> → PRIVATE_UPLOAD_DIR (identity documents,
  *                                    read only via the gated media route)
  *
  * Nothing ever deleted the files, so edits/removals/deletes leaked disk

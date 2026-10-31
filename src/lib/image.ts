@@ -2,6 +2,11 @@ import sharp from 'sharp'
 import { writeFile, mkdir } from 'fs/promises'
 import path from 'path'
 import { randomUUID } from 'crypto'
+import {
+  PUBLIC_UPLOAD_URL_PREFIX,
+  VERIFICATION_MEDIA_PREFIX,
+  resolveUploadDirs,
+} from '@/lib/media-storage'
 
 /**
  * Image upload pipeline — single source of truth for every image that enters
@@ -24,25 +29,17 @@ import { randomUUID } from 'crypto'
  * of /api/posts route through here so there is exactly one image code path.
  */
 
-const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads')
-
-/** Public storage root — exported for the upload lifecycle coordination
- *  (reference writes assert asset availability under the per-URL lock). */
-export const PUBLIC_UPLOAD_DIR = UPLOAD_DIR
-
 /**
- * Private storage for verification attachments (identity documents). Lives
- * OUTSIDE public/ — neither Next.js static serving nor the reverse proxy's
- * /uploads/ rule can reach it; the only read path is the identity-gated
- * route GET /api/media/verification/[filename] (applicant or admin).
- * The URL prefix is a routing boundary, NOT the access control — every read
- * re-checks submission ownership (see the media route).
+ * Storage roots come from the shared media-storage config (runtime env —
+ * see src/lib/media-storage.ts): public media under UPLOAD_DIR, private
+ * verification attachments (identity documents) under PRIVATE_UPLOAD_DIR.
+ * The private root lives OUTSIDE the public tree — neither Next.js static
+ * serving nor the reverse proxy's /uploads/ rule can reach it; the only
+ * read path is the identity-gated route GET /api/media/verification/
+ * [filename] (applicant or admin). The URL prefix is a routing boundary,
+ * NOT the access control — every read re-checks submission ownership (see
+ * the media route).
  */
-export const PRIVATE_UPLOAD_DIR = path.join(process.cwd(), 'private-uploads')
-
-/** URL prefix returned for private verification media; served only through
- *  the identity-gated media route, never from a static directory. */
-export const VERIFICATION_MEDIA_PREFIX = '/api/media/verification'
 
 /** Hard cap on the raw uploaded bytes, before any processing. */
 export const MAX_RAW_BYTES = 10 * 1024 * 1024 // 10MB
@@ -140,10 +137,11 @@ export async function processAndStoreImage(
 
   // Storage boundary is decided by purpose BEFORE any bytes are written:
   // verification attachments are identity documents and never touch the
-  // public static tree.
+  // public static tree. Roots resolve from runtime env (media-storage.ts).
   const isPrivate = opts.purpose === 'verification'
-  const targetDir = isPrivate ? PRIVATE_UPLOAD_DIR : UPLOAD_DIR
-  const urlPrefix = isPrivate ? VERIFICATION_MEDIA_PREFIX : '/uploads'
+  const dirs = resolveUploadDirs()
+  const targetDir = isPrivate ? dirs.private : dirs.public
+  const urlPrefix = isPrivate ? VERIFICATION_MEDIA_PREFIX : PUBLIC_UPLOAD_URL_PREFIX
 
   await mkdir(targetDir, { recursive: true })
 

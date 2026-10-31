@@ -10,7 +10,7 @@ import { mkdir, writeFile, rm, stat } from 'node:fs/promises'
 import path from 'node:path'
 import sharp from 'sharp'
 import { provisionTestDatabase, dropTestDatabase, sql } from './helpers/db'
-import { TEST_DATABASE_URL } from './helpers/env'
+import { TEST_DATABASE_URL, TEST_UPLOAD_DIR } from './helpers/env'
 
 vi.mock('server-only', () => ({}))
 vi.mock('next/cache', () => ({ revalidateTag: vi.fn(), unstable_cache: (f: unknown) => f }))
@@ -43,11 +43,13 @@ afterAll(async () => {
 
 async function publicFile() {
   const name = randomUUID() + '.webp'
-  const file = path.join('public', 'uploads', name)
+  // The suite's configured public root (helpers/env.ts) — the same physical
+  // directory assertUploadAssetsAvailable resolves by default.
+  const file = path.join(TEST_UPLOAD_DIR, name)
   await mkdir(path.dirname(file), { recursive: true })
   const bytes = await sharp({ create: { width: 4, height: 4, channels: 3, background: '#008800' } }).webp().toBuffer()
   await writeFile(file, bytes)
-  files.push(file, path.join('private-uploads', name))
+  files.push(file)
   return { name, url: '/uploads/' + name }
 }
 
@@ -175,7 +177,7 @@ it('non-canonical URL aliases are rejected before write, and valid reference pro
   await removeUnreferencedUpload(f.url)
 
   expect(await db.prisma.post.count({ where: { images: { has: f.url } } })).toBe(1)
-  expect((await stat(path.join('public', 'uploads', f.name))).isFile()).toBe(true)
+  expect((await stat(path.join(TEST_UPLOAD_DIR, f.name))).isFile()).toBe(true)
 })
 
 // ── 4. Idempotent reply recovery after parent tombstone ─────────

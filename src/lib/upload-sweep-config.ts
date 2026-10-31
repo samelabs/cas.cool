@@ -3,14 +3,9 @@
  * the policy values without pulling Prisma in.
  */
 
-import path from 'node:path'
-
 /** Grace window protecting in-flight compose sessions. */
 export const UPLOAD_GRACE_MS = 24 * 60 * 60 * 1000
 
-/** Storage roots for both attachment boundaries (absolute, cwd-anchored —
- *  same convention as image.ts / upload-cleanup.ts). */
-export const UPLOAD_DIRS = {
-  public: path.join(process.cwd(), 'public', 'uploads'),
-  private: path.join(process.cwd(), 'private-uploads'),
-} as const
+// Storage roots for both attachment boundaries live in media-storage.ts
+// (server runtime env: UPLOAD_DIR / PRIVATE_UPLOAD_DIR) — the same single
+// source every media consumer reads.

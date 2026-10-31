@@ -17,7 +17,8 @@
 import { NextRequest } from 'next/server'
 import path from 'node:path'
 import { unlink } from 'node:fs/promises'
-import { processAndStoreImage, PRIVATE_UPLOAD_DIR, MAX_RAW_BYTES, type UploadPurpose } from '@/lib/image'
+import { processAndStoreImage, MAX_RAW_BYTES, type UploadPurpose } from '@/lib/image'
+import { resolveUploadDirs } from '@/lib/media-storage'
 import { requireWrite } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
 import { canUploadMedia } from '@/lib/permissions'
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
         data: { filename: result.filename, userId: auth.identity.user!.id },
       })
     } catch (e: unknown) {
-      await unlink(path.join(PRIVATE_UPLOAD_DIR, result.filename)).catch(() => {})
+      await unlink(path.join(resolveUploadDirs().private, result.filename)).catch(() => {})
       console.error('[upload] private media ownership record failed:', e)
       return Response.json(
         { error: { code: 'internal_error', message: 'Upload could not be recorded.' } },

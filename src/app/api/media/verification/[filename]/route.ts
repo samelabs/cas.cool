@@ -2,10 +2,10 @@
  * GET /api/media/verification/[filename] — identity-gated read access to a
  * private verification attachment.
  *
- * Storage: the file lives in `private-uploads/` (outside public/), so no
- * static path — Next's public tree or an Nginx /uploads/ rule — can serve
- * it. This route is the ONLY read path, and it re-checks authorization on
- * every request.
+ * Storage: the file lives in the configured private root (PRIVATE_UPLOAD_DIR,
+ * outside the public tree), so no static path — Next's public tree or an
+ * Nginx /uploads/ rule — can serve it. This route is the ONLY read path,
+ * and it re-checks authorization on every request.
  *
  * TRUST CHAIN (R1): the `PrivateMedia` row written at upload time is the
  * single ownership anchor. A VerificationSubmission is user-authored data —
@@ -26,7 +26,7 @@ import path from 'node:path'
 import { readFile } from 'node:fs/promises'
 import { requireAuth } from '@/lib/api-auth'
 import { checkRateLimit } from '@/lib/rate-limit'
-import { PRIVATE_UPLOAD_DIR } from '@/lib/image'
+import { resolveUploadDirs } from '@/lib/media-storage'
 import { prisma } from '@/lib/db'
 
 /** Exactly what processAndStoreImage writes for verification attachments:
@@ -75,8 +75,9 @@ export async function GET(
 
   // Defense in depth over the regex: resolve and confirm the path stays
   // inside the private directory even if the filename shape ever changes.
-  const filePath = path.resolve(path.join(PRIVATE_UPLOAD_DIR, filename))
-  if (!filePath.startsWith(path.resolve(PRIVATE_UPLOAD_DIR) + path.sep)) {
+  const privateDir = resolveUploadDirs().private
+  const filePath = path.resolve(path.join(privateDir, filename))
+  if (!filePath.startsWith(path.resolve(privateDir) + path.sep)) {
     return Response.json({ error: { code: 'not_found', message: 'Not found.' } }, { status: 404 })
   }
 

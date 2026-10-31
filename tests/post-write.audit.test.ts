@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { access, mkdir, unlink, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { dropTestDatabase, provisionTestDatabase, sql } from './helpers/db'
-import { TEST_DATABASE_URL } from './helpers/env'
+import { TEST_DATABASE_URL, TEST_UPLOAD_DIR } from './helpers/env'
 
 // Next supplies these server-only modules in request contexts. The test
 // replaces only the framework boundary; all writes use real PostgreSQL.
@@ -159,7 +159,7 @@ describe('post-write failure and concurrency boundaries', () => {
   it('cleanup uses the image snapshot actually replaced by the edit', async () => {
     const post = await seedPost('audit_image_race')
     const filename = `audit-${randomUUID()}.webp`
-    const filePath = path.join(process.cwd(), 'public', 'uploads', filename)
+    const filePath = path.join(TEST_UPLOAD_DIR, filename)
     await mkdir(path.dirname(filePath), { recursive: true })
     await writeFile(filePath, 'image fixture')
     const blocker = new Client({ connectionString: TEST_DATABASE_URL })
@@ -186,7 +186,7 @@ describe('post-write failure and concurrency boundaries', () => {
   it('deletion cleanup uses the actual deleted image snapshot when edit commits new images concurrently', async () => {
     const post = await seedPost('audit_del_snap_race')
     const newFilename = `audit-del-new-${randomUUID()}.webp`
-    const newFilePath = path.join(process.cwd(), 'public', 'uploads', newFilename)
+    const newFilePath = path.join(TEST_UPLOAD_DIR, newFilename)
     await mkdir(path.dirname(newFilePath), { recursive: true })
     await writeFile(newFilePath, 'new image fixture')
 
@@ -237,7 +237,7 @@ describe('post-write failure and concurrency boundaries', () => {
   it('text edit without images preserves existing images and files, while explicit [] clears them', async () => {
     const post = await seedPost('audit_preserve_images')
     const filename = `preserve-${randomUUID()}.webp`
-    const filePath = path.join(process.cwd(), 'public', 'uploads', filename)
+    const filePath = path.join(TEST_UPLOAD_DIR, filename)
     await mkdir(path.dirname(filePath), { recursive: true })
     await writeFile(filePath, 'preserve fixture')
 
