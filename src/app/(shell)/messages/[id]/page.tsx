@@ -32,7 +32,7 @@ export default async function ConversationPage({
   const displayName = otherUser.displayName || otherUser.username
 
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden pb-14 md:static md:h-[100dvh] md:pb-0">
+    <div className="fixed inset-0 flex flex-col overflow-hidden pb-[calc(env(safe-area-inset-bottom)+5rem)] md:static md:h-[100dvh] md:pb-0">
       <MessageBadgeSync unreadCount={unreadInConv} />
       <PageHeader
         title={

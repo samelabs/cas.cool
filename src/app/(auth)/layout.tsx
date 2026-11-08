@@ -47,18 +47,19 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
       {/* Content card */}
       <div className="relative w-full max-w-md pb-20 md:pb-0">{children}</div>
 
-      {/* Mobile bottom nav — only public routes (Home, Explore) */}
-      <nav className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg md:hidden">
+      {/* Mobile bottom nav — only public routes (Home, Explore).
+          Same glass capsule as the shell MobileNav for visual consistency. */}
+      <nav className="glass-capsule md:hidden">
         <Link
           href="/"
-          className="flex h-14 w-full items-center justify-center"
+          className="flex h-14 w-14 items-center justify-center"
           aria-label={t.nav.home}
         >
           <HomeIcon className="h-6 w-6 text-ink-faint" />
         </Link>
         <Link
           href="/explore"
-          className="flex h-14 w-full items-center justify-center"
+          className="flex h-14 w-14 items-center justify-center"
           aria-label={t.nav.explore}
         >
           <SearchIcon className="h-6 w-6 text-ink-faint" />

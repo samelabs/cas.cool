@@ -48,7 +48,7 @@ export default async function NewConversationPage({
   const displayName = target.displayName || target.username
 
   return (
-    <div className="fixed inset-0 flex flex-col overflow-hidden pb-14 md:static md:h-[100dvh] md:pb-0">
+    <div className="fixed inset-0 flex flex-col overflow-hidden pb-[calc(env(safe-area-inset-bottom)+5rem)] md:static md:h-[100dvh] md:pb-0">
       <PageHeader title={displayName} subtitle={`@${target.username}`} backHref="/messages" />
       <NewMessageForm recipient={target as SafeUser} senderId={me.id} />
     </div>
