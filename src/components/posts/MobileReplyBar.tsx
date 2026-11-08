@@ -121,7 +121,7 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
   if (expanded) {
     return (
       <div
-        className="fixed inset-x-0 bottom-14 z-40 md:hidden"
+        className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-40 md:hidden"
         style={effectiveInset > 0 ? { bottom: `${effectiveInset}px` } : undefined}
       >
         <div className="mx-auto w-full max-w-[600px] border-t border-line bg-surface p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
@@ -156,7 +156,7 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-14 z-40 md:hidden">
+    <div className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-40 md:hidden">
       <button
         type="button"
         onClick={() => setExpanded(true)}

@@ -19,7 +19,7 @@ export function MobileNav() {
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href))
 
   return (
-    <nav className="mobile-bottom-nav fixed inset-x-0 bottom-0 z-50 flex items-center justify-around border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-lg md:hidden">
+    <nav className="mobile-bottom-nav glass-capsule md:hidden">
       {/* Home */}
       <NavIcon href="/" active={isActive('/')} Icon={HomeIcon} />
 
@@ -31,7 +31,7 @@ export function MobileNav() {
         prefetch={false}
         href="/compose"
         aria-label={t.nav.newPost}
-        className="-mt-5 flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand text-white shadow-lg shadow-brand/30 transition-transform hover:scale-105 active:scale-95"
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-brand text-white shadow-lg shadow-brand/30 transition-transform hover:scale-105 active:scale-95"
       >
         <PlusIcon className="h-6 w-6" />
       </Link>
@@ -67,7 +67,7 @@ function NavIcon({
   badge?: number
 }) {
   return (
-    <Link prefetch={false} href={href} aria-current={active ? 'page' : undefined} className="relative flex h-14 w-full items-center justify-center">
+    <Link prefetch={false} href={href} aria-current={active ? 'page' : undefined} className="relative flex h-14 w-14 items-center justify-center">
       <span className="relative">
         <Icon className={cn('h-6 w-6 transition-colors', active ? 'text-brand' : 'text-ink-faint')} />
         {badge > 0 && (

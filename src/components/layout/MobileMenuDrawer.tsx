@@ -193,8 +193,9 @@ export function MobileMenuDrawer({
               })}
             </div>
 
-            {/* Logout — extra bottom padding clears the fixed MobileNav */}
-            <div className="border-t border-line px-3 pb-[calc(env(safe-area-inset-bottom)+4.5rem)] pt-3">
+            {/* Logout — extra bottom padding clears the floating MobileNav capsule
+                (0.75rem offset + 4rem capsule + 1rem breathing room) */}
+            <div className="border-t border-line px-3 pb-[calc(env(safe-area-inset-bottom)+5.75rem)] pt-3">
               <button
                 type="button"
                 onClick={() => void logout()}

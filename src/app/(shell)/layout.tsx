@@ -26,7 +26,7 @@ export default async function ShellLayout({ children }: { children: React.ReactN
             scrollbar-gutter: stable reserves scrollbar space on every page
             so that switching between long (scrollable) and short (non-
             scrollable) pages never causes horizontal layout shift. */}
-        <main className="flex min-h-[100dvh] w-full min-w-0 flex-1 flex-col border-line/50 pb-14 md:border-x md:pb-0 xl:max-w-[600px] [scrollbar-gutter:stable]">
+        <main className="flex min-h-[100dvh] w-full min-w-0 flex-1 flex-col border-line/50 pb-[calc(env(safe-area-inset-bottom)+5rem)] md:border-x md:pb-0 xl:max-w-[600px] [scrollbar-gutter:stable]">
           {children}
         </main>
 
