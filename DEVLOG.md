@@ -1381,3 +1381,27 @@ would turn back-navigation state into a mobile memory liability.
 - Resolution is per call, not module-load cached — module-scope evaluation would drag the check into build-time module loading and pin stale values in tests.
 - The sitemap tier-2 cache root (`SITEMAP_CACHE_DIR`) keeps its cwd default: it points inside `.next/cache` in the project tree, not at media storage, and is out of scope for this batch.
 - Existing deployments must add `UPLOAD_DIR` / `PRIVATE_UPLOAD_DIR` to their runtime env (absolute, disjoint) before this build runs in production; the Nginx `/uploads/` alias must already resolve to the same physical storage.
+
+
+### 2026-11-09 — Mention existence gate: no more regex-only /u/ links
+
+**Context:** `renderContent` turned every regex-matched `@token` into a
+`/u/<name>` link with no existence check, so any typed name (wrong case,
+short, nonexistent) produced a guaranteed 404 profile page. Owner decision:
+fix the mechanism at spec level — no stock-data patches, no legacy compat.
+
+**Changes:**
+- New shared module `src/lib/mentions.ts`: single `MENTION_RE` (capture group
+  on the username) + `extractMentionCandidates` (unique, lowercase).
+- `Post.mentionUsernames String[] @default([])` (+ migration
+  `20261109190000_post_mention_usernames`, no backfill). Write path
+  (`createCorePost` / `editCorePost`) resolves candidates against `User`
+  inside the post transaction — one indexed `IN` lookup per write — and
+  stores only existing usernames.
+- `renderContent(text, mentionUsernames)`: links an `@token` only when its
+  lowercased name is in the list; otherwise plain text. PostCard and
+  PostDetailClient pass the field through; serialization exposes it
+  (`CorePost.mentionUsernames`, `?? []`).
+- Spec recorded in `DEVELOPMENT.md` § Mentions; AGENTS.md / API-BASELINE.md
+  wording updated. Legacy posts keep `[]` → their `@` tokens render as plain
+  text (deliberate).

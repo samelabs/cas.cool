@@ -10,6 +10,7 @@ import { VerifiedBadge, FlaskIcon, RepostIcon, CommentIcon } from '@/components/
 import { timeAgo } from '@/lib/utils'
 import { cn } from '@/lib/cn'
 import { postUrl } from '@/lib/shortCode'
+import { MENTION_RE } from '@/lib/mentions'
 import type { SafePost } from '@/lib/types'
 import type { ReactNode } from 'react'
 import { t } from '@/lib/i18n'
@@ -40,9 +41,8 @@ export interface PostCardProps {
 
 const URL_RE = /https?:\/\/[^\s<>)\]]+[^\s<>)\].,;:!?]/g
 const CAS_RE = /\b\d{2,7}-\d{2}-\d\b/g
-// Mention: @username (1-20 chars). Must be at start of text or preceded by
-// whitespace/punctuation — excludes email addresses (user@domain.com).
-const MENTION_RE = /(?:^|(?<=[\s/(\[{:;,]))@[A-Za-z0-9_]{1,20}/g
+// Mention regex lives in @/lib/mentions — shared verbatim with the server
+// write path so what the author typed and what got resolved can't drift.
 
 function combineRegexes(): RegExp {
   return new RegExp(
@@ -57,8 +57,16 @@ function combineRegexes(): RegExp {
 
 const TOKEN_RE = combineRegexes()
 
-export function renderContent(text: string): ReactNode[] {
+export function renderContent(text: string, mentionUsernames?: string[] | null): ReactNode[] {
   const nodes: ReactNode[] = []
+  // Mention gate (spec: src/lib/mentions.ts): an @token links to /u/<name>
+  // ONLY if the username was confirmed to exist at write time (stored on
+  // Post.mentionUsernames). Everything else stays plain text — a regex match
+  // alone is not a user, and /u/<unknown> is a guaranteed 404.
+  const mentionSet =
+    mentionUsernames && mentionUsernames.length > 0
+      ? new Set(mentionUsernames.map((n) => n.toLowerCase()))
+      : null
   let last = 0
   let key = 0
   let match: RegExpExecArray | null
@@ -80,11 +88,21 @@ export function renderContent(text: string): ReactNode[] {
         </Link>,
       )
     } else if (mention) {
-      nodes.push(
-        <Link key={`m-${key}`} href={`/u/${mention.slice(1)}`} prefetch={false} className="relative z-10 text-brand hover:underline">
-          {mention}
-        </Link>,
-      )
+      const name = mention.slice(1)
+      // Canonical href is the lowercase form — DB usernames are lowercase-only
+      // and the /u/ lookup is case-sensitive, so /u/Alice would 404 even when
+      // "alice" was confirmed. Display text keeps what the author typed.
+      const canonical = name.toLowerCase()
+      if (mentionSet?.has(canonical)) {
+        nodes.push(
+          <Link key={`m-${key}`} href={`/u/${canonical}`} prefetch={false} className="relative z-10 text-brand hover:underline">
+            {mention}
+          </Link>,
+        )
+      } else {
+        // Unconfirmed mention → plain text, never a dead /u/ link.
+        nodes.push(mention)
+      }
     }
     last = idx + full.length
     key++
@@ -179,13 +197,13 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
   // creation is the most expensive per-card operation, and content never
   // changes between renders for a given post object.
   const renderedContent = useMemo(
-    () => (post.content ? renderContent(post.content) : null),
-    [post.content],
+    () => (post.content ? renderContent(post.content, post.mentionUsernames) : null),
+    [post.content, post.mentionUsernames],
   )
   const quotedContent = post.quotedPost?.content ?? null
   const renderedQuotedContent = useMemo(
-    () => (quotedContent ? renderContent(quotedContent) : null),
-    [quotedContent],
+    () => (quotedContent ? renderContent(quotedContent, post.quotedPost?.mentionUsernames) : null),
+    [quotedContent, post.quotedPost?.mentionUsernames],
   )
 
   // ── Tombstone: soft-deleted post ──

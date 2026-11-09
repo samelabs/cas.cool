@@ -39,7 +39,7 @@ The primary audience is mobile users. Every interaction must feel as smooth as T
 - **Icons:** `@/components/icons` (the single `src/components/icons.tsx` module) is the only icon source — import icons from there directly.
 - **FollowButton:** `@/components/profile/FollowButton` is the one implementation (no shim copies exist).
 - **Runtime identity:** `SiteConfig` row 1 owns origin, brand and new API-key prefix. Read through `src/lib/site.ts`; never add domain or brand fallbacks to application code.
-- **Feed foundation:** timeline, interactions, identity and API must remain independent of the chemical product layer. CAS is the only structured compound tag; `@username` is a passive link without publish-time mention alerts.
+- **Feed foundation:** timeline, interactions, identity and API must remain independent of the chemical product layer. CAS is the only structured compound tag; `@username` links only to usernames confirmed to exist at write time (`Post.mentionUsernames`) — unconfirmed `@` tokens render as plain text; there are no publish-time mention alerts.
 
 ### Database
 - **Prisma schema is source of truth.** No `db push` in production — use migrations.

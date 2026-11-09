@@ -186,6 +186,27 @@ then verify owner/admin reads before reopening writes.
 `.env`, `public/uploads/`, `private-uploads/`, `logs/`, `node_modules/` — all gitignored; keep
 it that way.
 
+## Mentions (@username rendering rule)
+
+An `@token` in post content is **not** a mention just because it matches a
+regex. Linking is gated by server-side existence confirmation:
+
+- **Write path is the only authority.** On create and edit,
+  `post-core-write.service.ts` extracts candidates with the shared
+  `MENTION_RE` (`src/lib/mentions.ts`), lowercases them, and keeps only
+  usernames that exist in `User` — one indexed `username IN (...)` lookup
+  inside the post transaction. The survivors are stored on
+  `Post.mentionUsernames` (lowercase, deduped).
+- **Render path only consumes that list.** `renderContent` links an `@token`
+  to `/u/<name>` iff the name is in `mentionUsernames`; every other `@token`
+  renders as plain text. The render layer never queries users and never
+  decides mention validity on its own — `/u/<unknown>` is a guaranteed 404.
+- **No backfill, no compat.** Posts created before the field existed have
+  `mentionUsernames = []`, so their `@` tokens render as plain text. This is
+  deliberate; do not add legacy branches or runtime lookups for them.
+- Any future mention features (notifications, suggestions) must consume
+  `Post.mentionUsernames` rather than re-parsing content.
+
 ## Documentation to keep in sync
 
 When behavior or structure changes, update in the same batch: `README.md`,
