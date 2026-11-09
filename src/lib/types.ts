@@ -74,6 +74,14 @@ export interface CorePost {
   quotePostId: string | null
   quotedPost?: CorePost | null
   images: string[]
+  /**
+   * Usernames mentioned in content AND confirmed to exist at write time
+   * (lowercase). The render layer links an @token to /u/<name> only when
+   * the name is in this list; all other @tokens are plain text. Empty for
+   * legacy posts (created before the field existed) — their @tokens render
+   * as plain text, deliberately no backfill/compat path.
+   */
+  mentionUsernames?: string[]
   views: number
   createdAt: Date
   updatedAt?: Date

@@ -213,8 +213,10 @@ Account status: `suspended` = rejected at auth (treated as logged out);
 - Replies and quotes reference internal post IDs; read paths use shortCodes.
 - Admin user pagination uses pages; message polling uses fixed batches.
 - Denormalized counters are updated in the same transaction as writes.
-- CAS numbers are the only structured post tags. `@username` text is a
-  passive profile link; publishing a post does not create mention alerts.
+- CAS numbers are the only structured post tags. `@username` text links to a
+  profile only when the username was confirmed to exist at write time
+  (post payloads carry `mentionUsernames`); unconfirmed `@` tokens render as
+  plain text, and publishing a post does not create mention alerts.
 - Site identity, origin and new-key prefix come from `SiteConfig`;
   `/llms.txt`, robots, sitemap and the web manifest use that row.
   Propagation is measured and documented in `docs/FEED-PERF.md`: robots,

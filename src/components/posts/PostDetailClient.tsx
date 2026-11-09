@@ -47,8 +47,8 @@ function MainPost({ post, onDeleted, authorFollowed = false }: { post: SafePost;
   const isOwnPost = currentUser?.id === author.id
   const [openImage, setOpenImage] = useState(-1)
 
-  const renderedContent = post.content ? renderContent(post.content) : null
-  const renderedQuotedContent = post.quotedPost?.content ? renderContent(post.quotedPost.content) : null
+  const renderedContent = post.content ? renderContent(post.content, post.mentionUsernames) : null
+  const renderedQuotedContent = post.quotedPost?.content ? renderContent(post.quotedPost.content, post.quotedPost?.mentionUsernames) : null
 
   // Soft-deleted main post → tombstone
   if (post.deletedAt) {

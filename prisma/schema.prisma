@@ -203,6 +203,10 @@ model Post {
   quotedPost   Post?      @relation("PostQuotes", fields: [quotePostId], references: [id], onDelete: Cascade)
   quotingPosts Post[]     @relation("PostQuotes")
   images       String[]   @default([])
+  // Lowercase usernames mentioned in content AND confirmed to exist at write
+  // time (post-core-write resolves candidates against User in the same tx).
+  // Render layer links @tokens only against this list — see src/lib/mentions.ts.
+  mentionUsernames String[] @default([])
   views        Int        @default(0)
   // Denormalized engagement counts — maintained by application-layer
   // increment/decrement on like/repost/bookmark/reply toggle.

@@ -13,8 +13,25 @@
 import type { Prisma } from '@prisma/client'
 import { postInclude } from '@/lib/serialize'
 import { generateShortCode } from '@/lib/shortCode'
+import { extractMentionCandidates } from '@/lib/mentions'
 
 type PostTx = Prisma.TransactionClient
+
+/**
+ * Resolve mention candidates against the User table, INSIDE the caller's
+ * transaction: only usernames that actually exist survive. One indexed
+ * `username IN (...)` lookup on the unique column per create/edit —
+ * candidates are deduped and lowercase (DB usernames are lowercase-only).
+ */
+async function resolveMentionUsernames(tx: PostTx, content: string): Promise<string[]> {
+  const candidates = extractMentionCandidates(content)
+  if (candidates.length === 0) return []
+  const rows = await tx.user.findMany({
+    where: { username: { in: candidates } },
+    select: { username: true },
+  })
+  return rows.map((r) => r.username)
+}
 
 export async function createCorePost(
   tx: PostTx,
@@ -28,7 +45,11 @@ export async function createCorePost(
   },
 ) {
   const post = await tx.post.create({
-    data: { ...input, shortCode: generateShortCode() },
+    data: {
+      ...input,
+      mentionUsernames: await resolveMentionUsernames(tx, input.content),
+      shortCode: generateShortCode(),
+    },
     include: postInclude(input.authorId),
   })
   if (input.parentId) {
@@ -44,7 +65,14 @@ export async function editCorePost(
 ) {
   return tx.post.update({
     where: { id: input.id, authorId: input.actorId, deletedAt: null },
-    data: { content: input.content, images: input.images, editedAt: new Date() },
+    // Edits re-resolve mentions from the new content — the stored list is
+    // always in sync with what the post currently says.
+    data: {
+      content: input.content,
+      images: input.images,
+      editedAt: new Date(),
+      mentionUsernames: await resolveMentionUsernames(tx, input.content),
+    },
     include: postInclude(input.actorId),
   })
 }

@@ -66,6 +66,8 @@ interface RawPost {
   content: string
   quotePostId?: string | null
   images: string[]
+  /** Confirmed mentions (lowercase usernames) — gate for @token linking. */
+  mentionUsernames?: string[]
   views: number
   // Denormalized engagement counts (H3/M14)
   likeCount: number
@@ -96,6 +98,7 @@ export function serializePost(p: RawPost): CorePost {
     quotePostId: p.quotePostId ?? null,
     quotedPost: p.quotedPost ? serializePost(p.quotedPost as RawPost) : null,
     images: p.images ?? [],
+    mentionUsernames: p.mentionUsernames ?? [],
     views: p.views,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
