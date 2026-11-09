@@ -125,7 +125,13 @@
 html {
   -webkit-text-size-adjust: 100%;
   -webkit-tap-highlight-color: transparent;
-  overscroll-behavior-y: contain;
+  /* overscroll-behavior-y: none — kills the native elastic/rubber-band
+     overscroll of the page itself (contain only stopped scroll chaining and
+     the browser's own pull-to-refresh action). Two pull systems were racing:
+     armed gesture → custom indicator; unarmed (touchstart while the list was
+     still settling at scrollY>0) → native bounce dragged the whole page.
+     With `none` there is exactly one pull feedback: the custom hook. */
+  overscroll-behavior-y: none;
   /* Disable browser scroll anchoring globally. We control scroll position
      explicitly per-page (PostDetailClient useEffect + ResizeObserver).
      Browser anchoring selects arbitrary viewport elements as anchors and

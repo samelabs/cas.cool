@@ -19,16 +19,19 @@ interface PullToRefreshOptions {
 /**
  * Touch-only pull-to-refresh gesture hook.
  *
- * Activates when the user touches the screen at scrollY === 0 and drags
- * downward. Applies rubber-band resistance so the pull gets harder the
- * further you drag. On release past `threshold`, calls `onRefresh` and
- * shows a spinner until the promise resolves.
+ * Arms either at touchstart when already at scrollY === 0, OR mid-gesture:
+ * the moment a downward drag brings the page to scrollY === 0 (covers a
+ * touch that began while the list was still settling). On arming mid-gesture
+ * the start position is rebased so accumulated drag doesn't jump the
+ * indicator. Applies rubber-band resistance; on release past `threshold`,
+ * calls `onRefresh` and shows a spinner until the promise resolves.
  *
  * Desktop / non-touch devices: returns a permanently idle state (the
  * effect attaches no listeners).
  *
- * Requires `overscroll-behavior-y: contain` on the root scroller (html)
- * to suppress the browser's native pull-to-refresh — set in globals.css.
+ * Requires `overscroll-behavior-y: none` on the root scroller (html) so the
+ * native elastic overscroll never competes with this gesture — set in
+ * globals.css.
  */
 export function usePullToRefresh({
   onRefresh,
@@ -58,14 +61,29 @@ export function usePullToRefresh({
     if (!('ontouchstart' in window)) return
 
     const onTouchStart = (e: TouchEvent) => {
-      if (window.scrollY > 0 || refreshingRef.current) return
-      if (e.touches.length !== 1) return
+      if (refreshingRef.current || e.touches.length !== 1) return
+      // Always record the start; the gesture may arm at touchstart (already
+      // at top) or mid-move when the drag reaches scrollY === 0.
       startYRef.current = e.touches[0].clientY
-      trackingRef.current = true
+      trackingRef.current = window.scrollY === 0
     }
 
     const onTouchMove = (e: TouchEvent) => {
-      if (!trackingRef.current || refreshingRef.current) return
+      if (refreshingRef.current || e.touches.length !== 1) return
+
+      // Mid-gesture arming: the touch began away from the top (list still
+      // settling, or the user scrolled up to the top with the finger down)
+      // and the downward drag has now reached scrollY === 0. Rebase the
+      // start so the pull begins from this point, not from the accumulated
+      // drag distance (which would jump straight past the threshold).
+      if (!trackingRef.current) {
+        if (window.scrollY !== 0) return
+        const dy = e.touches[0].clientY - startYRef.current
+        if (dy <= 3) return
+        startYRef.current = e.touches[0].clientY - 3 / resistance
+        trackingRef.current = true
+      }
+
       const deltaY = e.touches[0].clientY - startYRef.current
 
       if (deltaY <= 0) {
@@ -79,7 +97,7 @@ export function usePullToRefresh({
       }
 
       // Prevent native overscroll/refresh behaviour
-      if (window.scrollY === 0) {
+      if (window.scrollY === 0 && e.cancelable) {
         e.preventDefault()
       }
 
