@@ -25,6 +25,11 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
+  // Soft keyboard must resize ONLY the visual viewport, never the layout
+  // viewport — otherwise the whole page compresses and the fixed bottom
+  // nav re-anchors above the keyboard. Default on stock Chromium, but many
+  // Android vendor browsers differ, so declare it explicitly.
+  interactiveWidget: 'resizes-visual',
 }
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {

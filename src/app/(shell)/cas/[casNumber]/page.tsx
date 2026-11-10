@@ -8,6 +8,7 @@ import { ChemicalHero } from '@/components/chem/ChemicalHero'
 import { CasQuickCompose } from '@/components/chem/CasQuickCompose'
 import { getTimelinePage } from '@/lib/services/post.service'
 import { jsonLdScript } from '@/lib/utils'
+import { hgsChemicalUrl } from '@/lib/cas-format'
 import type { Metadata } from 'next'
 
 import { getSiteConfig } from '@/lib/site'
@@ -81,7 +82,6 @@ export default async function CASPage({
       select: {
         name: true, smiles: true, banned: true, postCount: true,
         hcid: true, molecularFormula: true, averageMass: true,
-        structureSvgAt: true,
       },
     }),
     getTimelinePage({ tab: 'latest', cas: decoded, userId: me?.id }),
@@ -106,14 +106,29 @@ export default async function CASPage({
   ].filter(Boolean)
   const description = descriptionParts.join(' · ').slice(0, 160)
 
-  // JSON-LD structured data for SEO — Schema.org ChemicalSubstance
+  // JSON-LD structured data for SEO + GEO (generative-engine extraction):
+  // Schema.org ChemicalSubstance with a machine-parsable PropertyValue
+  // identifier (CAS RN) and, when known, an authority cross-link (sameAs)
+  // to the HGS compound page. @id gives the entity a stable IRI.
+  const url = `${site.origin}/cas/${decoded}`
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'ChemicalSubstance',
-    identifier: `CAS ${decoded}`,
+    '@id': `${url}#chemical`,
     name: primaryName || `CAS ${decoded}`,
     description,
-    url: `${site.origin}/cas/${decoded}`,
+    url,
+    identifier: [
+      {
+        '@type': 'PropertyValue',
+        name: 'CAS Registry Number',
+        value: decoded,
+      },
+      ...(chemical?.hcid != null
+        ? [{ '@type': 'PropertyValue', name: 'HGS compound id', value: String(chemical.hcid) }]
+        : []),
+    ],
+    ...(chemical?.hcid != null ? { sameAs: [hgsChemicalUrl(chemical.hcid)] } : {}),
     ...(chemical?.molecularFormula ? { molecularFormula: chemical.molecularFormula } : {}),
     ...(chemical?.averageMass != null ? { molecularWeight: `${chemical.averageMass.toFixed(2)} g/mol` } : {}),
     ...(names.length > 1 ? { alternateName: names.slice(1) } : {}),
@@ -135,7 +150,6 @@ export default async function CASPage({
         names={names}
         banned={chemical?.banned ?? false}
         hcid={chemical?.hcid ?? null}
-        hasStructureSvg={chemical?.structureSvgAt != null}
         molecularFormula={chemical?.molecularFormula ?? null}
         averageMass={chemical?.averageMass ?? null}
         postCount={totalPosts}
