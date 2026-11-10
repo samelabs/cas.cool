@@ -29,6 +29,8 @@ export interface ComposeBoxProps {
   quotePost?: SafePost | null
   editPost?: SafePost | null
   hideAvatar?: boolean
+  /** CAS numbers pre-attached for a new post (e.g. CAS-page quick compose). */
+  initialCasNumbers?: string[]
 }
 
 export function ComposeBox({
@@ -40,6 +42,7 @@ export function ComposeBox({
   quotePost = null,
   editPost = null,
   hideAvatar = false,
+  initialCasNumbers = [],
 }: ComposeBoxProps) {
   const router = useRouter()
   const { currentUser } = useAuth()
@@ -51,7 +54,11 @@ export function ComposeBox({
   const fileRef = useRef<HTMLInputElement>(null)
 
   // Manually specified CAS numbers (via flask button)
-  const [casNumbers, setCasNumbers] = useState<string[]>(() => editPost?.chemicals.map((c) => c.casNumber) ?? [])
+  const [casNumbers, setCasNumbers] = useState<string[]>(() =>
+    editPost
+      ? editPost.chemicals.map((c) => c.casNumber)
+      : [...new Set(initialCasNumbers)],
+  )
   const [casInput, setCasInput] = useState('')
   const [showCasInput, setShowCasInput] = useState(false)
 

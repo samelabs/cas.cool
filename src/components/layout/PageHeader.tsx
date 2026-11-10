@@ -7,6 +7,9 @@ export interface PageHeaderProps {
   backHref?: string
   children?: ReactNode
   right?: ReactNode
+  /** Render the title as a div instead of h1 — for pages that provide
+   *  their own content h1 (avoiding duplicate h1s for SEO). */
+  heading?: boolean
 }
 
 function ArrowLeft({ className = 'w-5 h-5' }: { className?: string }) {
@@ -33,6 +36,7 @@ export default function PageHeader({
   backHref,
   children,
   right,
+  heading = true,
 }: PageHeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/80 backdrop-blur-md">
@@ -49,9 +53,15 @@ export default function PageHeader({
         {/* Centered title — absolutely positioned so it's visually centered
             regardless of back button or right slot width. */}
         <div className="pointer-events-none absolute left-1/2 -translate-x-1/2 max-w-[60%] text-center">
-          <h1 className="text-base font-bold text-ink truncate leading-tight">
-            {title}
-          </h1>
+          {heading ? (
+            <h1 className="text-base font-bold text-ink truncate leading-tight">
+              {title}
+            </h1>
+          ) : (
+            <div className="text-base font-bold text-ink truncate leading-tight">
+              {title}
+            </div>
+          )}
           {subtitle && <p className="text-xs text-ink-muted truncate">{subtitle}</p>}
         </div>
         {right && <div className="ml-auto shrink-0">{right}</div>}

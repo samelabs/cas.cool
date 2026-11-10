@@ -249,7 +249,11 @@ model Chemical {
   name        String?                      // Semicolon-separated multi-name; system-maintained (PubChem etc.)
   smiles      String?                      // SMILES notation for 2D molecular structure; system-maintained
   banned      Boolean  @default(false)     // Prohibited/restricted chemical flag
-  postCount   Int      @default(0)          // Denormalized count for fast trending
+  postCount   Int      @default(0)         // Denormalized count for fast trending
+  hcid        Int?                         // HGS compound id (one-time stock import); powers the HCID badge + HGS link
+  molecularFormula String?                 // e.g. "C2H6O"; stock import
+  averageMass Float?                       // average molar mass (g/mol); stock import
+  structureSvgAt DateTime?                 // set by the offline SVG batch job once /mol-svg/<cas>.svg exists; NULL = not generated
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
