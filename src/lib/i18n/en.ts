@@ -597,6 +597,17 @@ export const en = {
     metaDiscussions: (siteName: string) => `discussions, properties, and community knowledge on ${siteName}`,
     casRegistryNumber: (cas: string) => `CAS Registry Number ${cas}`,
     primaryCasName: (name: string, cas: string) => `${name} (CAS ${cas})`,
+    hcidBadge: (hcid: number) => `HCID ${hcid}`,
+    viewOnHgs: 'View full profile on HGS',
+    hgsBadgeTitle: 'HGS compound ID — opens the compound page on huagongshe.com',
+    molecularFormulaLabel: 'Formula',
+    averageMassLabel: (m: number) => `Avg mass ${m.toFixed(2)} g/mol`,
+    averageMassLabelShort: 'Avg mass',
+    discussionsLabel: 'Discussions',
+    alsoKnownAs: 'Also known as',
+    structureAlt: (name: string) => `2D molecular structure of ${name}`,
+    noPostsTitle: (cas: string) => `No posts for CAS ${cas} yet`,
+    noPostsBody: 'Be the first to share synthesis notes, properties, or experience with this compound.',
   },
 
   // ─── Time ───────────────────────────────────────────────
