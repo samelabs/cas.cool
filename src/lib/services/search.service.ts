@@ -10,6 +10,8 @@ import { attachPostChemicals } from '@/lib/chemistry/post-views'
 import { isCanonicalTimestamp, normalizePageSize } from '@/lib/pagination'
 import type { SafePost, SafeUser } from '@/lib/types'
 
+import { cjkBigramTokens } from '@/lib/cjk-bigrams'
+
 export interface SearchFirstPage {
   posts: SafePost[]
   nextCursor: string | null
@@ -75,12 +77,26 @@ async function searchPostsPage(
     }
   }
   const params: unknown[] = [`%${q}%`]
+  // CJK bigram prefilter (see prisma/migrations/20261109233000_post_content_bigrams).
+  // pg_trgm cannot index interior substrings < 3 chars, so 2-char Chinese
+  // queries (the core chemistry vocabulary) full-scan. When the query
+  // contains a CJK run of >= 2 chars, add a `content_bigrams @@ tsquery`
+  // candidate prefilter on the same bigrams the DB column stores. The
+  // content ILIKE below stays as the exact final arbiter, so result
+  // semantics are unchanged (bigram false positives are rechecked away).
+  const cjkBigrams = cjkBigramTokens(q)
+  let bigramPredicate = ''
+  if (cjkBigrams) {
+    params.push(cjkBigrams.join(' & '))
+    bigramPredicate = `AND p.content_bigrams @@ to_tsquery('simple', $${params.length})`
+  }
+
   let cursorPredicate = ''
   if (cursorDate && cursorId) {
     params.push(cursorDate, cursorId)
-    // Keyset pagination predicate using bound parameters ($2, $3) — no string interpolation.
+    // Keyset pagination predicate using bound parameters — no string interpolation.
     // Explicit UTC conversion ensures naive timestamp(3) column matches the ISO UTC timestamp.
-    cursorPredicate = `AND (p."createdAt", p.id) < ($2::timestamptz AT TIME ZONE 'UTC', $3)`
+    cursorPredicate = `AND (p."createdAt", p.id) < ($${params.length - 1}::timestamptz AT TIME ZONE 'UTC', $${params.length})`
   }
   params.push(take)
   const limitParameter = `$${params.length}`
@@ -91,6 +107,7 @@ async function searchPostsPage(
     FROM "Post" p
     WHERE p."parentId" IS NULL
       AND p.content ILIKE $1
+      ${bigramPredicate}
       ${cursorPredicate}
     ORDER BY p."createdAt" DESC, p.id DESC
     LIMIT ${limitParameter}
