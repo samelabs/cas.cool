@@ -69,7 +69,7 @@ function PullIndicator({
 
   return (
     <div
-      className="pointer-events-none fixed left-1/2 top-3 z-40 -translate-x-1/2"
+      className="pointer-events-none fixed left-1/2 top-16 z-40 -translate-x-1/2"
       aria-hidden
     >
       <div
