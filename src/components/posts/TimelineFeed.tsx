@@ -1,5 +1,6 @@
 'use client'
 
+import { getScrollY, scrollToY } from '@/lib/scroll-context'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { t } from '@/lib/i18n'
 import useSWRInfinite from 'swr/infinite'
@@ -388,7 +389,7 @@ function TimelineFeedInner({
       if (!newestSeenRef.current || createdAt > newestSeenRef.current) {
         newestSeenRef.current = createdAt
       }
-      window.scrollTo({ top: 0, behavior: 'auto' })
+      scrollToY(0)
     },
     [mutate],
   )
@@ -412,7 +413,7 @@ function TimelineFeedInner({
     setBannerLoading(true)
     await refreshNewPosts()
     setBannerLoading(false)
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    scrollToY(0, 'smooth')
   }, [refreshNewPosts])
 
   // ─── Infinite scroll ───

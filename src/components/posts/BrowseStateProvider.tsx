@@ -1,5 +1,6 @@
 'use client'
 
+import { getScrollY, getScrollHeight, scrollToY } from '@/lib/scroll-context'
 import {
   createContext,
   useContext,
@@ -182,7 +183,7 @@ export function useBrowseScroll(key: string | null, contentTick: number) {
     let raf = 0
     const save = () => {
       raf = 0
-      store.save(key, window.scrollY)
+      store.save(key, getScrollY())
     }
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(save)
@@ -194,7 +195,7 @@ export function useBrowseScroll(key: string | null, contentTick: number) {
       if (raf) cancelAnimationFrame(raf)
       // Final save on unmount — the position the user left at when
       // navigating into a post detail page.
-      store.save(key, window.scrollY)
+      store.save(key, getScrollY())
       store.close(key)
     }
   }, [store, key])
@@ -206,9 +207,9 @@ export function useBrowseScroll(key: string | null, contentTick: number) {
   useEffect(() => {
     const pending = pendingRef.current
     if (!pending || pending.key !== key) return
-    if (document.documentElement.scrollHeight >= pending.y + window.innerHeight) {
+    if (getScrollHeight() >= pending.y + window.innerHeight) {
       pendingRef.current = null
-      window.scrollTo(0, pending.y)
+      scrollToY(pending.y)
     }
   }, [contentTick, key])
 }

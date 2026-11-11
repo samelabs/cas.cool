@@ -39,73 +39,42 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
   const [expanded, setExpanded] = useState(false)
   const [content, setContent] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  // Keyboard geometry, dual-model:
-  //   keyboardPx > 0  → visual-resize model (stock Chromium / iOS): the
-  //                     layout viewport is intact and the bar must be lifted
-  //                     by exactly the keyboard height.
-  //   contentResize   → resizes-content model (vendor Android browsers):
-  //                     the layout viewport itself shrank, so the viewport
-  //                     bottom already sits on the keyboard top — the bar
-  //                     must stay at bottom:0 and must NOT be lifted again.
-  // Both signals are needed: computing the keyboard height from a live
-  // window.innerHeight fails on the content model because innerHeight
-  // shrinks together with the visual viewport, yielding a constant 0 —
-  // the exact bug that let the bottom nav float above the keyboard.
-  const [keyboardPx, setKeyboardPx] = useState(0)
-  const [contentResize, setContentResize] = useState(false)
+  // Distance from the TOP of the layout viewport to the bottom edge of the
+  // visual viewport (= the soft-keyboard top edge) while the keyboard is
+  // open; null = keyboard closed, bar stays in its default slot.
+  const [kbBottomPx, setKbBottomPx] = useState<number | null>(null)
 
-  // No-keyboard geometry captured at mount (keyboard guaranteed closed)
-  // and refreshed whenever we observe a keyboard-less state — self-heals
-  // across rotation and URL-bar show/hide.
-  const baselineRef = useRef({ inner: 0, vv: 0 })
-
-  useEffect(() => {
-    const vv = window.visualViewport
-    baselineRef.current = vv
-      ? { inner: window.innerHeight, vv: vv.height }
-      : { inner: window.innerHeight, vv: window.innerHeight }
-  }, [])
-
-  // Keypresses below this are treated as keyboard-less geometry drift
-  // (URL bar collapse/expand ≈ ≤80px); real soft keyboards are ≳200px.
+  // Lift the bar onto the soft keyboard. One standard geometric truth, no
+  // browser-model branching: visualViewport.offsetTop + height IS where the
+  // keyboard begins — identical semantics in every browser and PWA. The bar
+  // anchors there via `bottom: calc(100dvh - <kbBottom>px)`, which resolves
+  // to the keyboard top in both viewport behaviours (window shrinks under
+  // the keyboard, or the keyboard overlays the layout).
+  // Keyboard presence is detected ONLY from the visual viewport shrinking
+  // during an expanded session (threshold: drift like URL-bar show/hide is
+  // ~80px, real keyboards are ~200px+). window.innerHeight is deliberately
+  // never used — on iOS PWAs it moves together with the keyboard and turns
+  // any formula built on it into a constant zero.
+  // rAF-throttled: the resize event fires dozens of times during the
+  // keyboard-open animation.
   const KEYBOARD_MIN = 120
+  const maxVhRef = useRef(0)
 
   useEffect(() => {
     if (!expanded) return
     const vv = window.visualViewport
     if (!vv) return
 
+    maxVhRef.current = 0
     let rafId = 0
     const update = () => {
       cancelAnimationFrame(rafId)
       rafId = requestAnimationFrame(() => {
-        const b = baselineRef.current
-        const innerShrink = b.inner - window.innerHeight
-        const isContentResize = innerShrink > KEYBOARD_MIN
-        // Visual-model keyboard height. On the content model this value is
-        // meaningless (it equals the shrink itself), which is why the model
-        // is detected first and the height is only used when !isContentResize.
-        const visualKb = Math.max(0, b.inner - vv.height - vv.offsetTop)
-
-        if (!isContentResize && visualKb <= KEYBOARD_MIN) {
-          // No keyboard — absorb URL-bar/rotation drift into the baseline.
-          baselineRef.current = { inner: window.innerHeight, vv: vv.height }
-          setKeyboardPx(0)
-          setContentResize(false)
-          return
-        }
-
-        if (isContentResize) {
-          setContentResize(true)
-          setKeyboardPx(0)
+        maxVhRef.current = Math.max(maxVhRef.current, vv.height)
+        if (maxVhRef.current - vv.height > KEYBOARD_MIN) {
+          setKbBottomPx(Math.round(vv.offsetTop + vv.height))
         } else {
-          setContentResize(false)
-          setKeyboardPx(Math.round(visualKb))
-          // Counter-pan: iOS auto-scrolls the page to reveal the caret when
-          // the textarea gains focus (before the bar is lifted). Since the
-          // bar rides fully above the keyboard, that pan is never needed —
-          // snap it back so the underlying page stays put.
-          if (vv.offsetTop > 0) window.scrollBy(0, -vv.offsetTop)
+          setKbBottomPx(null)
         }
       })
     }
@@ -119,15 +88,10 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
     }
   }, [expanded])
 
-  // Derived: keyboard signals are only meaningful while expanded — a stale
-  // reading from a previous session must not leak into the collapsed state.
-  const activeKeyboardPx = expanded ? keyboardPx : 0
-  const activeContentResize = expanded && contentResize
-  const keyboardOn = expanded && (contentResize || keyboardPx > 0)
+  const keyboardOn = expanded && kbBottomPx != null
 
   // Hide the mobile bottom nav while the keyboard is open so it can never
-  // float above the keyboard (visual model) or ride the shrunken viewport
-  // bottom (content model).
+  // float above the keyboard.
   useEffect(() => {
     if (keyboardOn) {
       document.body.dataset.replyBarOpen = 'true'
@@ -137,20 +101,6 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
     return () => { delete document.body.dataset.replyBarOpen }
   }, [keyboardOn])
 
-  // Freeze page scroll while the keyboard is open — the page below must
-  // not move; restore the previous overflow state when it closes.
-  useEffect(() => {
-    if (!keyboardOn) return
-    const prevHtml = document.documentElement.style.overflow
-    const prevBody = document.body.style.overflow
-    document.documentElement.style.overflow = 'hidden'
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.documentElement.style.overflow = prevHtml
-      document.body.style.overflow = prevBody
-    }
-  }, [keyboardOn])
-
   if (!currentUser) return null
 
   const charLimit = maxPostLength(currentUser)
@@ -158,8 +108,7 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
 
   const closeBar = () => {
     setExpanded(false)
-    setKeyboardPx(0)
-    setContentResize(false)
+    setKbBottomPx(null)
   }
 
   const submit = async () => {
@@ -192,21 +141,10 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
   }
 
   if (expanded) {
-    // Keyboard-aware anchor:
-    //   content model  → viewport bottom already sits on the keyboard top
-    //                    (layout viewport shrank), so pin to bottom:0
-    //   visual model   → lift by the measured keyboard height
-    //   keyboard closed→ default slot above the (restored) bottom nav
-    const keyboardStyle =
-      contentResize
-        ? { bottom: 0 }
-        : keyboardPx > 0
-          ? { bottom: `${keyboardPx}px` }
-          : undefined
     return (
       <div
         className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-40 md:hidden"
-        style={keyboardStyle}
+        style={kbBottomPx != null ? { bottom: `calc(100dvh - ${kbBottomPx}px)` } : undefined}
       >
         <div className="mx-auto w-full max-w-[600px] border-t border-line bg-surface p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
           <div className="flex gap-2">

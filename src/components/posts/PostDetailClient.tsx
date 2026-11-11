@@ -1,5 +1,6 @@
 'use client'
 
+import { getScrollY, getScrollHeight, scrollToY } from '@/lib/scroll-context'
 import { useRef, useCallback, useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -258,18 +259,18 @@ export function PostDetailClient({
       if (!res.ok) throw new Error('Failed to load earlier posts')
       const data = await res.json()
       if (Array.isArray(data.posts) && data.posts.length > 0) {
-        const prevScrollHeight = document.documentElement.scrollHeight
-        const prevScrollY = window.scrollY
+        const prevScrollHeight = getScrollHeight()
+        const prevScrollY = getScrollY()
 
         setAncestorPosts((prev) => [...data.posts, ...prev])
         setAncestorCursor(data.nextCursor ?? null)
         setHasMoreAncestors(Boolean(data.hasMoreAncestors))
 
         requestAnimationFrame(() => {
-          const newScrollHeight = document.documentElement.scrollHeight
+          const newScrollHeight = getScrollHeight()
           const delta = newScrollHeight - prevScrollHeight
           if (delta > 0) {
-            window.scrollTo(0, prevScrollY + delta)
+            scrollToY(prevScrollY + delta)
           }
         })
       } else {
@@ -328,10 +329,10 @@ export function PostDetailClient({
       if (chainPosts.length > 0 && mainPostRef.current) {
         // PageHeader inner div h-[53px] + border-b 1px = 54px total.
         // Position MainPost flush below the header (no overlap).
-        const y = mainPostRef.current.getBoundingClientRect().top + window.scrollY - 54
-        window.scrollTo(0, y)
+        const y = mainPostRef.current.getBoundingClientRect().top + getScrollY() - 54
+        scrollToY(y)
       } else {
-        window.scrollTo(0, 0)
+        scrollToY(0)
       }
     }
 

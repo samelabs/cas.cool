@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { getScrollY } from '@/lib/scroll-context'
 
 export interface PullToRefreshState {
   pullDistance: number
@@ -65,7 +66,7 @@ export function usePullToRefresh({
       // Always record the start; the gesture may arm at touchstart (already
       // at top) or mid-move when the drag reaches scrollY === 0.
       startYRef.current = e.touches[0].clientY
-      trackingRef.current = window.scrollY === 0
+      trackingRef.current = getScrollY() === 0
     }
 
     const onTouchMove = (e: TouchEvent) => {
@@ -77,7 +78,7 @@ export function usePullToRefresh({
       // start so the pull begins from this point, not from the accumulated
       // drag distance (which would jump straight past the threshold).
       if (!trackingRef.current) {
-        if (window.scrollY !== 0) return
+        if (getScrollY() !== 0) return
         const dy = e.touches[0].clientY - startYRef.current
         if (dy <= 3) return
         startYRef.current = e.touches[0].clientY - 3 / resistance
@@ -97,7 +98,7 @@ export function usePullToRefresh({
       }
 
       // Prevent native overscroll/refresh behaviour
-      if (window.scrollY === 0 && e.cancelable) {
+      if (getScrollY() === 0 && e.cancelable) {
         e.preventDefault()
       }
 

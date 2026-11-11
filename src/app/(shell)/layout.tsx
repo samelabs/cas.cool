@@ -13,7 +13,11 @@ export default async function ShellLayout({ children }: { children: React.ReactN
 
   return (
     <BadgeProvider initialNotificationCount={notificationCount} initialMessageCount={messageCount}>
-      <div className="mx-auto flex w-full max-w-[1290px] justify-center">
+      {/* App-shell layering (mobile): the viewport-height row pins the app
+          and the feed column (main) is the scroll container — the document
+          itself never scrolls, so the soft keyboard cannot push page
+          content. Desktop keeps normal document scrolling (h-auto). */}
+      <div className="mx-auto flex w-full max-w-[1290px] justify-center h-[100dvh] md:h-auto">
         {/* Left sidebar — hidden on mobile, icon-only at md, full at xl */}
         <aside className="sticky top-0 hidden max-h-[100dvh] shrink-0 md:block md:w-[72px] xl:w-[275px]">
           <Sidebar
@@ -26,7 +30,10 @@ export default async function ShellLayout({ children }: { children: React.ReactN
             scrollbar-gutter: stable reserves scrollbar space on every page
             so that switching between long (scrollable) and short (non-
             scrollable) pages never causes horizontal layout shift. */}
-        <main className="flex min-h-[100dvh] w-full min-w-0 flex-1 flex-col border-line/50 pb-[calc(env(safe-area-inset-bottom)+5rem)] md:border-x md:pb-0 xl:max-w-[600px] [scrollbar-gutter:stable]">
+        <main
+          id="feed-scroller"
+          className="flex w-full min-w-0 flex-1 flex-col border-line/50 pb-[calc(env(safe-area-inset-bottom)+5rem)] max-md:h-full max-md:min-h-0 max-md:overflow-y-auto max-md:overscroll-contain md:min-h-[100dvh] md:border-x md:pb-0 xl:max-w-[600px] [scrollbar-gutter:stable]"
+        >
           {children}
         </main>
 
