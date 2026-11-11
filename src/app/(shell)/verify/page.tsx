@@ -120,6 +120,11 @@ export default async function VerifyPage() {
                   <td className="px-4 py-2.5 text-center text-ink-faint">{t.verify.dmUnverified}</td>
                   <td className="px-4 py-2.5 text-center font-semibold text-brand">{t.verify.dmVerified}</td>
                 </tr>
+                <tr>
+                  <td className="px-4 py-2.5 text-ink">{t.verify.apiAccess}</td>
+                  <td className="px-4 py-2.5 text-center text-ink-faint">{t.verify.apiUnverified}</td>
+                  <td className="px-4 py-2.5 text-center font-semibold text-brand">{t.verify.apiVerified}</td>
+                </tr>
               </tbody>
             </table>
           </div>

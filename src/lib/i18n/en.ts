@@ -359,6 +359,9 @@ export const en = {
     dm: 'Direct messaging',
     dmUnverified: 'Followers only',
     dmVerified: 'All users',
+    apiAccess: 'API & MCP access',
+    apiUnverified: 'Read-only',
+    apiVerified: 'Read & write',
     annualReview: 'Annual Review',
     annualReviewDesc:
       'Verification is valid for 12 months from the date of approval. Before your verification expires, you will be notified to submit a renewal request with current documents. Failure to renew before the expiry date will result in the loss of verified status and its associated permissions.',
@@ -623,7 +626,7 @@ export const en = {
       'compounds', 'molecules',
     ],
     // Home page
-    homeTitle: 'Discover & Share Chemical Knowledge',
+    homeTitle: 'Discover Global Chemical Information',
     // Dynamic pages
     postNotFound: 'Post not found',
     postWithCas: (author: string, cas: string) => `${author} posted CAS ${cas}`,

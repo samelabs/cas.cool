@@ -159,7 +159,7 @@ describe('browse-state rules: identity-owned cache, overlays, scroll lifecycle',
   it('the remembered scroll position is consumed before the first save overwrites it', () => {
     const src = read('src/components/posts/BrowseStateProvider.tsx')
     const takeAt = src.indexOf('store.take(key)')
-    const firstSaveAt = src.indexOf('store.save(key, window.scrollY)')
+    const firstSaveAt = src.indexOf('store.save(key, getScrollY())')
     expect(takeAt, 'take must exist').toBeGreaterThan(-1)
     expect(firstSaveAt, 'save must exist and come after the take').toBeGreaterThan(takeAt)
   })
