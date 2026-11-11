@@ -39,17 +39,19 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
   const [expanded, setExpanded] = useState(false)
   const [content, setContent] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  // Distance from the TOP of the layout viewport to the bottom edge of the
-  // visual viewport (= the soft-keyboard top edge) while the keyboard is
-  // open; null = keyboard closed, bar stays in its default slot.
-  const [kbBottomPx, setKbBottomPx] = useState<number | null>(null)
+  // Top edge of the bar in layout-viewport px while the keyboard is open
+  // (null = keyboard closed, bar stays in its default slot).
+  const [anchorTopPx, setAnchorTopPx] = useState<number | null>(null)
 
   // Lift the bar onto the soft keyboard. One standard geometric truth, no
   // browser-model branching: visualViewport.offsetTop + height IS where the
-  // keyboard begins — identical semantics in every browser and PWA. The bar
-  // anchors there via `bottom: calc(100dvh - <kbBottom>px)`, which resolves
-  // to the keyboard top in both viewport behaviours (window shrinks under
-  // the keyboard, or the keyboard overlays the layout).
+  // keyboard begins — identical semantics in every browser and PWA.
+  // The bar is TOP-anchored in pure px (top = keyboard top − bar height,
+  // re-measured every update). Never compose two independently animated
+  // terms (e.g. bottom: calc(100dvh - Xpx)): dvh is interpolated on the
+  // compositor timeline while X updates on the JS/rAF timeline — the
+  // per-frame mismatch between them is visible as jitter while the keyboard
+  // animates open. A single JS-driven term cannot beat against itself.
   // Keyboard presence is detected ONLY from the visual viewport shrinking
   // during an expanded session (threshold: drift like URL-bar show/hide is
   // ~80px, real keyboards are ~200px+). window.innerHeight is deliberately
@@ -59,6 +61,7 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
   // keyboard-open animation.
   const KEYBOARD_MIN = 120
   const maxVhRef = useRef(0)
+  const barRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     if (!expanded) return
@@ -72,9 +75,11 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
       rafId = requestAnimationFrame(() => {
         maxVhRef.current = Math.max(maxVhRef.current, vv.height)
         if (maxVhRef.current - vv.height > KEYBOARD_MIN) {
-          setKbBottomPx(Math.round(vv.offsetTop + vv.height))
+          const keyboardTop = vv.offsetTop + vv.height
+          const barH = barRef.current?.offsetHeight ?? 0
+          setAnchorTopPx(Math.round(keyboardTop - barH))
         } else {
-          setKbBottomPx(null)
+          setAnchorTopPx(null)
         }
       })
     }
@@ -88,7 +93,7 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
     }
   }, [expanded])
 
-  const keyboardOn = expanded && kbBottomPx != null
+  const keyboardOn = expanded && anchorTopPx != null
 
   // Hide the mobile bottom nav while the keyboard is open so it can never
   // float above the keyboard.
@@ -108,7 +113,7 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
 
   const closeBar = () => {
     setExpanded(false)
-    setKbBottomPx(null)
+    setAnchorTopPx(null)
   }
 
   const submit = async () => {
@@ -143,10 +148,14 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
   if (expanded) {
     return (
       <div
+        ref={barRef}
         className="fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] z-40 md:hidden"
-        style={kbBottomPx != null ? { bottom: `calc(100dvh - ${kbBottomPx}px)` } : undefined}
+        style={anchorTopPx != null ? { top: `${anchorTopPx}px`, bottom: 'auto' } : undefined}
       >
-        <div className="mx-auto w-full max-w-[600px] border-t border-line bg-surface p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+        <div
+          className="mx-auto w-full max-w-[600px] border-t border-line bg-surface p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]"
+          style={anchorTopPx != null ? { paddingBottom: '0.75rem' } : undefined}
+        >
           <div className="flex gap-2">
             <Avatar
               src={currentUser.avatar}
