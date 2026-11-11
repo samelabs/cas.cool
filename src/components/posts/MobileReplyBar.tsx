@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { t } from '@/lib/i18n'
 import { Avatar } from '@/components/ui/Avatar'
 import { Button } from '@/components/ui/Button'
@@ -63,6 +63,23 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
   const maxVhRef = useRef(0)
   const barRef = useRef<HTMLDivElement>(null)
 
+  // Single anchor computation — used by BOTH the viewport event loop (rAF-
+  // throttled) and the bar's own ResizeObserver. Bar-height changes (textarea
+  // growing to multiple lines) fire NO viewport event; without re-anchoring,
+  // the stale top lets the keyboard swallow the grown part of the bar.
+  const applyAnchor = useCallback(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    maxVhRef.current = Math.max(maxVhRef.current, vv.height)
+    if (maxVhRef.current - vv.height > KEYBOARD_MIN) {
+      const keyboardTop = vv.offsetTop + vv.height
+      const barH = barRef.current?.offsetHeight ?? 0
+      setAnchorTopPx(Math.round(keyboardTop - barH))
+    } else {
+      setAnchorTopPx(null)
+    }
+  }, [])
+
   useEffect(() => {
     if (!expanded) return
     const vv = window.visualViewport
@@ -72,16 +89,7 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
     let rafId = 0
     const update = () => {
       cancelAnimationFrame(rafId)
-      rafId = requestAnimationFrame(() => {
-        maxVhRef.current = Math.max(maxVhRef.current, vv.height)
-        if (maxVhRef.current - vv.height > KEYBOARD_MIN) {
-          const keyboardTop = vv.offsetTop + vv.height
-          const barH = barRef.current?.offsetHeight ?? 0
-          setAnchorTopPx(Math.round(keyboardTop - barH))
-        } else {
-          setAnchorTopPx(null)
-        }
-      })
+      rafId = requestAnimationFrame(applyAnchor)
     }
     update()
     vv.addEventListener('resize', update)
@@ -91,7 +99,15 @@ export default function MobileReplyBar({ postId, onReply }: MobileReplyBarProps)
       vv.removeEventListener('resize', update)
       vv.removeEventListener('scroll', update)
     }
-  }, [expanded])
+  }, [expanded, applyAnchor])
+
+  // Re-anchor when the bar itself resizes (multi-line input growth).
+  useEffect(() => {
+    if (!expanded || !barRef.current) return
+    const ro = new ResizeObserver(applyAnchor)
+    ro.observe(barRef.current)
+    return () => ro.disconnect()
+  }, [expanded, applyAnchor])
 
   const keyboardOn = expanded && anchorTopPx != null
 

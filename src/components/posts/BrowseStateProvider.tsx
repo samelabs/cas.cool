@@ -1,6 +1,6 @@
 'use client'
 
-import { getScrollY, getScrollHeight, scrollToY } from '@/lib/scroll-context'
+import { getScrollY, getScrollHeight, scrollToY, onScroll as onScrollEvent } from '@/lib/scroll-context'
 import {
   createContext,
   useContext,
@@ -188,10 +188,12 @@ export function useBrowseScroll(key: string | null, contentTick: number) {
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(save)
     }
-    window.addEventListener('scroll', onScroll, { passive: true })
+    // Scroll subscription via scroll-context: window on desktop, the feed
+    // column on mobile (element scroll events never bubble to window).
+    const unsubscribeScroll = onScrollEvent(onScroll)
     save()
     return () => {
-      window.removeEventListener('scroll', onScroll)
+      unsubscribeScroll()
       if (raf) cancelAnimationFrame(raf)
       // Final save on unmount — the position the user left at when
       // navigating into a post detail page.
