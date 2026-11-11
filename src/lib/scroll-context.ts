@@ -37,3 +37,32 @@ export function scrollToY(y: number, behavior: ScrollBehavior = 'auto'): void {
   if (el) el.scrollTo({ top: y, behavior })
   else window.scrollTo({ top: y, behavior })
 }
+
+/**
+ * Subscribe to scrolling in the ACTIVE context: the feed-scroller element
+ * on mobile (element scroll events do NOT bubble to window), the window on
+ * desktop. Handles the context swap if the viewport crosses the md
+ * breakpoint. Returns an unsubscribe function.
+ */
+export function onScroll(handler: () => void): () => void {
+  if (typeof window === 'undefined') return () => {}
+  window.addEventListener('scroll', handler, { passive: true })
+  let current = feedScroller()
+  current?.addEventListener('scroll', handler, { passive: true })
+
+  const mql = window.matchMedia('(min-width: 768px)')
+  const onChange = () => {
+    const next = feedScroller()
+    if (next === current) return
+    current?.removeEventListener('scroll', handler)
+    next?.addEventListener('scroll', handler, { passive: true })
+    current = next
+  }
+  mql.addEventListener('change', onChange)
+
+  return () => {
+    window.removeEventListener('scroll', handler)
+    current?.removeEventListener('scroll', handler)
+    mql.removeEventListener('change', onChange)
+  }
+}
