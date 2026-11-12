@@ -8,7 +8,9 @@
  * baseline document must move with it.
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { Pool } from 'pg'
+import type { PrismaClient } from '@prisma/client'
 import {
   agePostPastEditWindow,
   dropTestDatabase,
@@ -22,6 +24,18 @@ import { api, json, registerAndLogin, sessionCookie, type Session } from './help
 import { TEST_DATABASE_URL, TEST_UPLOAD_DIR } from './helpers/env'
 import { startTestServer, stopTestServer } from './helpers/server'
 
+// In-process service imports (side-effect.service, notification) must NEVER
+// instantiate the app-wide Prisma singleton from src/lib/db: it binds to
+// whatever process.env.DATABASE_URL is at creation time, is cached on
+// globalThis, and has no teardown — its idle pool clients then get
+// FORCE-terminated by the teardown DROP DATABASE and surface as an
+// unhandled 57P01 "error" event (CI flake, PR #4 run). Route every
+// service-level import through THIS file's explicit pool-backed client,
+// the same pattern as the closure.* regression suites.
+const db = vi.hoisted(() => ({ prisma: null as unknown as PrismaClient }))
+vi.mock('@/lib/db', () => db)
+let dbPool: Pool
+
 const PASSWORD = 'password-123'
 
 let alice: Session
@@ -29,6 +43,10 @@ let bob: Session
 
 beforeAll(async () => {
   await provisionTestDatabase()
+  const { PrismaClient } = await import('@prisma/client')
+  const { PrismaPg } = await import('@prisma/adapter-pg')
+  dbPool = new Pool({ connectionString: TEST_DATABASE_URL })
+  db.prisma = new PrismaClient({ adapter: new PrismaPg(dbPool) })
   await startTestServer()
   alice = await registerAndLogin('alice')
   bob = await registerAndLogin('bob')
@@ -36,6 +54,8 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await stopTestServer()
+  await db.prisma?.$disconnect()
+  await dbPool?.end()
   await dropTestDatabase()
 })
 
@@ -1617,8 +1637,8 @@ describe('report resolve side-effect outbox (fault injection)', () => {
 
   it('notification executor fault stays pending with lastError, then recovers on default drain', async () => {
     // Service-level fault injection: drain with a throwing notification
-    // executor. The vitest process's Prisma client must target the test DB.
-    process.env.DATABASE_URL = TEST_DATABASE_URL
+    // executor. Service imports resolve to this file's mocked @/lib/db
+    // (see the vi.mock at the top), so they target the throwaway test DB.
     const { drainSideEffects, sideEffectExecutors } = await import('@/lib/services/side-effect.service')
 
     const [task] = await sql<{ id: string }>(`
@@ -1667,7 +1687,6 @@ describe('report resolve side-effect outbox (fault injection)', () => {
   })
 
   it('concurrent auto-drain and admin retry claim once: exactly one notification per event', async () => {
-    process.env.DATABASE_URL = TEST_DATABASE_URL
     const { drainSideEffects } = await import('@/lib/services/side-effect.service')
 
     const recipientUser = await registerAndLogin('obx_conc_rcpt')
@@ -1707,7 +1726,6 @@ describe('report resolve side-effect outbox (fault injection)', () => {
   })
 
   it('retry after delivered-but-unmarked crash produces no duplicate notification', async () => {
-    process.env.DATABASE_URL = TEST_DATABASE_URL
     const { drainSideEffects } = await import('@/lib/services/side-effect.service')
     const { deliverNotification } = await import('@/lib/notification')
 
@@ -1827,7 +1845,6 @@ describe('report resolve side-effect outbox (fault injection)', () => {
   })
 
   it('claim honors limit: tasks beyond the limit stay unclaimed and immediately claimable', async () => {
-    process.env.DATABASE_URL = TEST_DATABASE_URL
     const { drainSideEffects } = await import('@/lib/services/side-effect.service')
 
     const recipientUser = await registerAndLogin('obx_lim_rcpt')
@@ -1869,7 +1886,6 @@ describe('report resolve side-effect outbox (fault injection)', () => {
   })
 
   it('A delivered(pending) -> B delivered -> user reads B -> retry A is a pure no-op; B retry too', async () => {
-    process.env.DATABASE_URL = TEST_DATABASE_URL
     const { drainSideEffects } = await import('@/lib/services/side-effect.service')
     const { deliverNotification } = await import('@/lib/notification')
 
@@ -1945,7 +1961,6 @@ describe('report resolve side-effect outbox (fault injection)', () => {
   })
 
   it('legacy (non-event) dedup still holds for LIKE/COMMENT/REPOST tuples', async () => {
-    process.env.DATABASE_URL = TEST_DATABASE_URL
     const { deliverNotification } = await import('@/lib/notification')
 
     const recipientUser = await registerAndLogin('obx_leg_rcpt')
@@ -1981,7 +1996,6 @@ describe('report resolve side-effect outbox (fault injection)', () => {
   })
 
   it('claim is mutually exclusive across two live connections (FOR UPDATE SKIP LOCKED)', async () => {
-    process.env.DATABASE_URL = TEST_DATABASE_URL
     const { buildSideEffectClaimSql } = await import('@/lib/services/side-effect.service')
 
     const recipientUser = await registerAndLogin('obx_cnt_rcpt')
