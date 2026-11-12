@@ -86,6 +86,8 @@ describe('Public copy, SEO/GEO and discovery governance', () => {
     it('chemical structured data ChemicalSubstance uses hasRepresentation, name, identifier, url, description; no interactionStatistic', () => {
       const casPage = read('src/app/(shell)/cas/[casNumber]/page.tsx')
       expect(casPage, 'uses hasRepresentation instead of non-standard smiles').toContain('hasRepresentation: chemical.smiles')
+      expect(casPage, 'identifier is structured PropertyValue, not a plain string').toContain("'@type': 'PropertyValue'")
+      expect(casPage, 'identifier names the CAS Registry Number property').toContain("name: 'CAS Registry Number'")
       expect(casPage, 'does not mount smiles directly on ChemicalSubstance').not.toMatch(/smiles:\s*chemical\.smiles/)
       expect(casPage, 'does not mount interactionStatistic on ChemicalSubstance').not.toContain('interactionStatistic')
       expect(casPage, 'does not mount commentCount on ChemicalSubstance').not.toContain('commentCount')
@@ -200,7 +202,14 @@ describe('Public copy, SEO/GEO and discovery governance', () => {
 
       expect(jsonLd['@context']).toBe('https://schema.org')
       expect(jsonLd['@type']).toBe('ChemicalSubstance')
-      expect(jsonLd.identifier).toBe('CAS 100-00-5')
+      // Contract (2026-11-11 GEO upgrade): identifier is a machine-parsable
+      // PropertyValue[] — the CAS RN entry is always first; an HCID entry is
+      // appended only when the chemical carries one (this seed row has none).
+      // A plain string here (e.g. 'CAS 100-00-5') is a contract regression.
+      expect(jsonLd.identifier).toEqual([
+        { '@type': 'PropertyValue', name: 'CAS Registry Number', value: '100-00-5' },
+      ])
+      expect(jsonLd.identifier[0].value, 'CAS RN stays in canonical dashed form').toMatch(/^\d{2,7}-\d{2}-\d$/)
       expect(jsonLd.name).toBe('Chlorobenzene')
       expect(jsonLd.hasRepresentation).toBe('c1ccccc1Cl')
       expect(jsonLd.description).toContain('Chlorobenzene (CAS 100-00-5)')
