@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation'
+import { cache } from 'react'
 import { t } from '@/lib/i18n'
 import { getCurrentUser } from '@/lib/auth'
 import PageHeader from '@/components/layout/PageHeader'
@@ -9,13 +10,24 @@ import { getPostByShortCode, getPostChain, getPostReplies, checkFollow } from '@
 import { jsonLdScript } from '@/lib/utils'
 import { getSiteConfig } from '@/lib/site'
 
+// Request-scoped dedupe: generateMetadata and the page body both read the
+// post — React cache() collapses them into ONE query per (code, viewer)
+// within a single request. Per-request scope only; never shared across
+// users or requests, so personalized state (liked/bookmarked/viewer flags
+// inside the include) stays isolated.
+const getPost = cache((code: string, userId?: string | null) => getPostByShortCode(code, userId))
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ code: string }>
 }): Promise<Metadata> {
   const { code } = await params
-  const post = await getPostByShortCode(code)
+  // Same (code, userId) tuple as the page body so the request-scoped cache
+  // dedupes the post read across metadata + page. getCurrentUser() is
+  // itself React-cache()d (src/lib/auth.ts), so this adds no extra query.
+  const me = await getCurrentUser()
+  const post = await getPost(code, me?.id)
   const site = await getSiteConfig()
   if (!post) return { title: t.seo.postNotFound }
   // Soft-deleted post: tombstone page renders "deleted" notice with HTTP 200.
@@ -83,27 +95,25 @@ export default async function ShortPostPage({
   const me = await getCurrentUser()
   const isLoggedIn = !!me
 
-  const post = await getPostByShortCode(code, me?.id)
+  const post = await getPost(code, me?.id)
   if (!post) notFound()
 
   const main = post
 
-  // Build the ancestor chain for replies (root → ... → parent of current).
-  // Two-phase fetch: first lightweight id+parentId for chain walk, then
-  // hydrate only the actual ancestors (typically 1-10 posts, not all replies).
-  const chainResult = post.parentId
-    ? await getPostChain(post.id, post.conversationId || post.parentId, me?.id)
-    : null
+  // Chain, replies and follow-state are independent of each other once the
+  // post is loaded (chain/replies key off post ids; follow keys off the
+  // viewer + authorId) — fetch them in parallel instead of sequentially.
+  // (chain only exists for replies; follow only for logged-in viewers
+  // looking at someone else's post.)
+  const [chainResult, replyResult, authorFollowed] = await Promise.all([
+    post.parentId
+      ? getPostChain(post.id, post.conversationId || post.parentId, me?.id)
+      : Promise.resolve(null),
+    getPostReplies(post.id, me?.id, isLoggedIn ? undefined : 5),
+    me && me.id !== post.authorId ? checkFollow(me.id, post.authorId) : Promise.resolve(false),
+  ])
   const chainPosts = chainResult ? chainResult.ancestors : []
-
-  // Guest: 5 replies, no cursor (disables infinite scroll).
-  // Logged-in: 20 replies + cursor (full pagination).
-  const replyResult = await getPostReplies(post.id, me?.id, isLoggedIn ? undefined : 5)
   const replyFeed = replyResult.posts
-
-  // Check if current user follows the post author (for the Follow button).
-  const authorFollowed =
-    me && me.id !== post.authorId ? await checkFollow(me.id, post.authorId) : false
 
   const publicImages = (post.images ?? []).map((img) =>
     img.startsWith('http') ? img : `${site.origin}${img}`
