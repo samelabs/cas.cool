@@ -54,14 +54,14 @@ export const MIGRATION_CLASS = {
  * @param {import('./io-types.ts').Io} io
  * @returns {Promise<string>} full 40-char sha
  */
-export async function resolveSha(raw, io) {
+export async function resolveSha(raw, io, repoDir = '.') {
   if (!SHA_RE.test(raw)) {
     throw new DeployRefused(
       'SHA_NOT_EXPLICIT',
       `refusing implicit ref "${raw}" — pass an explicit commit SHA (7-40 hex)`,
     )
   }
-  const r = await io.exec(`git rev-parse --verify ${raw}^{commit}`)
+  const r = await io.exec(`git -C ${repoDir} rev-parse --verify ${raw}^{commit}`)
   if (r.code !== 0) {
     throw new DeployRefused('SHA_UNKNOWN', `commit ${raw} not found in local git`, r.stderr)
   }
@@ -104,9 +104,9 @@ export async function ciGate(fullSha, requiredCheck, io) {
  * Classify migration risk between the currently running SHA and the target.
  * @returns {Promise<{cls: string, added: string[], destructive: string[]}>}
  */
-export async function classifyMigrations(currentSha, targetSha, io) {
+export async function classifyMigrations(currentSha, targetSha, io, repoDir = '.') {
   if (!currentSha) return { cls: MIGRATION_CLASS.NONE, added: [], destructive: [] }
-  const r = await io.exec(`git diff --name-only ${currentSha} ${targetSha} -- prisma/migrations`)
+  const r = await io.exec(`git -C ${repoDir} diff --name-only ${currentSha} ${targetSha} -- prisma/migrations`)
   if (r.code !== 0) {
     throw new DeployRefused('MIGRATION_DIFF_FAILED', 'git diff of migration dirs failed', r.stderr)
   }
@@ -117,7 +117,7 @@ export async function classifyMigrations(currentSha, targetSha, io) {
   if (added.length === 0) return { cls: MIGRATION_CLASS.NONE, added, destructive: [] }
   const destructive = []
   for (const file of added) {
-    const show = await io.exec(`git show ${targetSha}:${file}`)
+    const show = await io.exec(`git -C ${repoDir} show ${targetSha}:${file}`)
     if (show.code !== 0) {
       throw new DeployRefused('MIGRATION_READ_FAILED', `cannot read ${file}@${targetSha.slice(0, 8)}`, show.stderr)
     }
@@ -148,15 +148,16 @@ export function planDeploy({ migrationCls, maintenanceRequested }) {
  * readlink, read-only prisma migrate status on the CURRENT release).
  */
 export async function preflight(opts, io) {
-  const fullSha = await resolveSha(opts.sha, io)
+  const repoDir = opts.repoDir ?? '.'
+  const fullSha = await resolveSha(opts.sha, io, repoDir)
   const ci = await ciGate(fullSha, opts.requiredCheck, io)
   const currentDir = await io.currentReleaseDir()
   if (!currentDir) {
     throw new DeployRefused('NO_CURRENT_RELEASE', 'cannot resolve the currently running release directory (PM2 cwd) — refusing to deploy blind')
   }
   const currentShort = currentDir.split('/').pop()
-  const currentSha = await resolveSha(currentShort, io)
-  const migrations = await classifyMigrations(currentSha, fullSha, io)
+  const currentSha = await resolveSha(currentShort, io, repoDir)
+  const migrations = await classifyMigrations(currentSha, fullSha, io, repoDir)
   const plan = planDeploy({ migrationCls: migrations.cls, maintenanceRequested: opts.withMaintenance })
   const disk = await io.diskFreeMb(opts.releasesRoot)
   if (disk < (opts.minFreeMb ?? 8000)) {
@@ -203,8 +204,9 @@ export async function deploy(opts, io) {
     // A live release dir is more than the git tree: it carries .env (copied
     // from the current release, never printed), the shared uploads symlinks
     // and the PM2 log dir — exactly what the running releases have.
+    // git runs with -C so the deploy never depends on the shell's cwd.
     await io.exec(`mkdir -p ${dir}`)
-    await io.exec(`git archive ${pre.sha} | tar -x -C ${dir}`)
+    await io.exec(`git -C ${opts.repoDir ?? '.'} archive ${pre.sha} | tar -x -C ${dir}`)
     const prep = await io.exec(
       `cp -p ${pre.current.dir}/.env ${dir}/.env && ` +
         `ln -sfn ${opts.sharedRoot}/uploads ${dir}/public/uploads && ` +
@@ -278,7 +280,26 @@ export async function deploy(opts, io) {
     // symlink: /var/www/cas.cool is the git checkout (nginx serves /uploads/
     // from it directly) and the app's identity IS its PM2 cwd. Re-registering
     // the app against the new release dir is the existing switch mechanism.
-    await io.restartApp(dir)
+    // pm2 delete runs before pm2 start: if start fails, the app slot is
+    // EMPTY — bring the CURRENT release back up before refusing.
+    try {
+      await io.restartApp(dir)
+    } catch (switchErr) {
+      const switchRecovery = { previousRestarted: false }
+      try {
+        await io.restartApp(pre.current.dir)
+        switchRecovery.previousRestarted = true
+      } catch (e) {
+        switchRecovery.restartError = String(e)
+      }
+      throw new DeployRefused(
+        'SWITCH_FAILED',
+        switchRecovery.previousRestarted
+          ? 'pm2 re-register of the new release failed — the PREVIOUS release was brought back up; no switch happened'
+          : 'pm2 re-register of the new release failed AND the previous release could not be restored — APP IS DOWN, manual intervention required',
+        { switchError: String(switchErr), recovery: switchRecovery },
+      )
+    }
     switched = true
     await phase(journal, 'switched', io)
 

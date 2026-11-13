@@ -63,11 +63,11 @@ function makeIo(): ScriptedIo {
       if (dir) await fsp.mkdir(dir, { recursive: true })
       return { code: 0, stdout: '', stderr: '' }
     }
-    if (cmd.startsWith('git rev-parse --verify a')) return { code: 0, stdout: CUR_FULL + '\n', stderr: '' }
-    if (cmd.startsWith('git rev-parse --verify b')) return { code: 0, stdout: TGT_FULL + '\n', stderr: '' }
-    if (cmd.startsWith('git rev-parse')) return { code: 0, stdout: cmd.includes('main') ? 'x'.repeat(40) + '\n' : '', stderr: '' }
-    if (cmd.startsWith('git diff --name-only')) return { code: 0, stdout: controls.migrationDiff.join('\n') + '\n', stderr: '' }
-    if (cmd.startsWith('git show')) {
+    if (cmd.includes('git -C /repo rev-parse --verify a')) return { code: 0, stdout: CUR_FULL + '\n', stderr: '' }
+    if (cmd.includes('git -C /repo rev-parse --verify b')) return { code: 0, stdout: TGT_FULL + '\n', stderr: '' }
+    if (cmd.startsWith('git -C /repo rev-parse')) return { code: 0, stdout: cmd.includes('main') ? 'x'.repeat(40) + '\n' : '', stderr: '' }
+    if (cmd.startsWith('git -C /repo diff --name-only')) return { code: 0, stdout: controls.migrationDiff.join('\n') + '\n', stderr: '' }
+    if (cmd.startsWith('git -C /repo show')) {
       const sql = controls.destructiveSql ? 'ALTER TABLE "Chemical" DROP COLUMN "x";\n' : 'CREATE TABLE "T";\n'
       return { code: 0, stdout: sql, stderr: '' }
     }
@@ -166,6 +166,7 @@ beforeEach(async () => {
   opts = {
     sha: 'bbbbbbb',
     requiredCheck: 'checks',
+    repoDir: '/repo',
     releasesRoot: `${root}/releases`,
     sharedRoot: `${root}/shared`,
     origin: 'http://test',
@@ -437,5 +438,47 @@ describe('retention and concurrency', () => {
     const s2 = makeIo()
     const result = await deploy({ ...opts, resume: true }, s2.io)
     expect(result.ok).toBe(true)
+  })
+})
+
+describe('git runs against the explicit repo dir, never the shell cwd', () => {
+  it('every git invocation carries -C repoDir', async () => {
+    const s = makeIo()
+    await deploy(opts, s.io)
+    const gits = s.calls.filter((c) => c.startsWith('git ') || c.includes(' git '))
+    expect(gits.length).toBeGreaterThan(0)
+    for (const c of gits) expect(c).toMatch(/(^|&&\s*env.*? )?git -C \/repo /)
+    expect(s.calls.filter((c) => /^git(?! -C)/.test(c))).toEqual([])
+  })
+})
+
+describe('pm2 start failure after delete restores the previous release', () => {
+  it('switch failure brings the CURRENT app back up and refuses with SWITCH_FAILED', async () => {
+    const s = makeIo()
+    // delete succeeds (recorded), start of the NEW dir fails, start of the OLD dir works
+    let failNext = true
+    s.io.restartApp = async (dir: string) => {
+      if (failNext && dir.endsWith('bbbbbbb')) {
+        failNext = false
+        throw new Error('pm2 re-register failed: boom')
+      }
+      s.calls.push(`RESTART-APP ${dir}`)
+    }
+    const err = await refuse(deploy(opts, s.io))
+    expect(err.code).toBe('SWITCH_FAILED')
+    const restarts = s.calls.filter((c) => c.startsWith('RESTART-APP'))
+    expect(restarts.at(-1)).toBe(`RESTART-APP ${root}/releases/aaaaaaa`)
+    expect((err.detail as { recovery?: { previousRestarted: boolean } }).recovery?.previousRestarted).toBe(true)
+    expect(await exists(`${root}/releases/.deploy-lock`)).toBe(false)
+  })
+
+  it('switch failure where the previous release ALSO cannot start reports APP DOWN', async () => {
+    const s = makeIo()
+    s.io.restartApp = async () => {
+      throw new Error('pm2 down entirely')
+    }
+    const err = await refuse(deploy(opts, s.io))
+    expect(err.code).toBe('SWITCH_FAILED')
+    expect(err.message).toContain('APP IS DOWN')
   })
 })

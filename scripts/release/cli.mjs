@@ -130,7 +130,11 @@ const io = {
   currentReleaseDir,
   diskFreeMb: async (p) => {
     const r = await sh(`df -Pm ${p} | tail -1 | awk '{print $4}'`)
-    return Number(r.stdout.trim())
+    const free = Number(r.stdout.trim())
+    if (r.code !== 0 || !Number.isFinite(free) || free < 0) {
+      throw new Error(`df failed for ${p} (rc=${r.code}) — refusing to guess free space`)
+    }
+    return free
   },
   pendingMigrations: async (currentDir) => {
     const r = await sh(`cd ${currentDir} && set -a && . ./.env && set +a && npx prisma migrate status 2>&1 | grep -c 'have not yet been applied' || true`)
@@ -214,6 +218,7 @@ async function main() {
   const opts = {
     sha: arg('sha'),
     requiredCheck: CONF.requiredCheck,
+    repoDir: CONF.repoDir,
     releasesRoot: CONF.releasesRoot,
     sharedRoot: CONF.sharedRoot,
     origin: CONF.origin,
