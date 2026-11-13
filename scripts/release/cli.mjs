@@ -9,9 +9,23 @@
  *   node scripts/release/cli.mjs deploy   --sha <sha> [--with-maintenance]
  *                                          [--keep N] [--resume]
  *
- * preflight is strictly read-only (git rev-parse / df / readlink /
+ * preflight is strictly read-only (git rev-parse / df / pm2 jlist /
  * prisma migrate status against the CURRENT release). It never installs,
  * builds, migrates or switches anything.
+ *
+ * Defaults mirror the production deployment exactly. Every override below
+ * exists so the SAME code path can be exercised end-to-end in an isolated
+ * drill (temp release roots, a scratch PM2 app, a scratch database) without
+ * touching the live cascool app or its database:
+ *   RELEASES_ROOT / RELEASE_SHARED_ROOT   release/shared directories
+ *   RELEASE_REPO_DIR                      git checkout for archive/diff
+ *   RELEASE_REQUIRED_CHECK                required GitHub check name
+ *   RELEASE_ORIGIN                        origin URL for health probes
+ *   RELEASE_CURRENT_DIR                   current release dir (skip pm2 lookup)
+ *   RELEASE_PM2_APP                       PM2 app name (default: cascool)
+ *   RELEASE_APP_PORT / RELEASE_APP_HOST   app port/host (default 3000/127.0.0.1)
+ *   RELEASE_PM2_SAVE=0                    skip `pm2 save` (drills only)
+ *   RELEASE_PSQL_CMD                      psql prefix for DB probes
  */
 
 import { execFile } from 'node:child_process'
@@ -34,31 +48,35 @@ const CONF = {
   repoDir: process.env.RELEASE_REPO_DIR ?? path.resolve(import.meta.dirname, '..', '..'),
   releasesRoot: process.env.RELEASES_ROOT ?? '/var/www/cascool-releases',
   sharedRoot: process.env.RELEASE_SHARED_ROOT ?? '/var/www/cascool-shared',
-  currentLink: process.env.RELEASE_CURRENT_LINK ?? '/var/www/cas.cool',
   origin: process.env.RELEASE_ORIGIN ?? 'https://127.0.0.1',
   requiredCheck: process.env.RELEASE_REQUIRED_CHECK ?? 'checks',
-  pm2App: 'cascool',
+  pm2App: process.env.RELEASE_PM2_APP ?? 'cascool',
+  appPort: process.env.RELEASE_APP_PORT ?? '3000',
+  appHost: process.env.RELEASE_APP_HOST ?? '127.0.0.1',
+  pm2Save: process.env.RELEASE_PM2_SAVE !== '0',
+  psqlCmd: process.env.RELEASE_PSQL_CMD ?? 'sudo -n -u postgres psql -At -d cascool',
+  currentDirEnv: process.env.RELEASE_CURRENT_DIR ?? '',
 }
+
+const PM2_ENV = `env -i HOME=${process.env.HOME} PATH=/usr/local/bin:/usr/bin:/bin`
 
 function sh(cmd, { envFile, timeoutMs = 120_000 } = {}) {
-  return new Promise((resolve) => {
-    const env = { ...process.env }
-    if (envFile) {
-      // Source the release .env without echoing it (never print values).
-      execFileSyncShell(`set -a && . ${envFile} && set +a && ${cmd}`, timeoutMs, env, resolve)
-    } else {
-      execFileSyncShell(cmd, timeoutMs, env, resolve)
-    }
-  })
+  if (envFile) {
+    // Source the release .env without echoing it (never print values).
+    return execFileSyncShell(`set -a && . ${envFile} && set +a && ${cmd}`, timeoutMs)
+  }
+  return execFileSyncShell(cmd, timeoutMs)
 }
 
-function execFileSyncShell(cmd, timeoutMs, env, resolve) {
-  const child = execFile('/bin/bash', ['-c', cmd], { env, timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 }, () => {})
-  let stdout = ''
-  let stderr = ''
-  child.stdout?.on('data', (d) => (stdout += d))
-  child.stderr?.on('data', (d) => (stderr += d))
-  child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }))
+function execFileSyncShell(cmd, timeoutMs) {
+  return new Promise((resolve) => {
+    const child = execFile('/bin/bash', ['-c', cmd], { timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 }, () => {})
+    let stdout = ''
+    let stderr = ''
+    child.stdout?.on('data', (d) => (stdout += d))
+    child.stderr?.on('data', (d) => (stderr += d))
+    child.on('close', (code) => resolve({ code: code ?? 1, stdout, stderr }))
+  })
 }
 
 async function fetchCheckRuns(sha) {
@@ -70,10 +88,28 @@ async function fetchCheckRuns(sha) {
   return data.check_runs ?? []
 }
 
+let cachedCurrentDir = null
+
+async function currentReleaseDir() {
+  if (cachedCurrentDir) return cachedCurrentDir
+  if (CONF.currentDirEnv) {
+    cachedCurrentDir = CONF.currentDirEnv
+    return cachedCurrentDir
+  }
+  // The running release IS the app's PM2 cwd — production has no symlink.
+  const r = await sh(`${PM2_ENV} pm2 jlist`)
+  if (r.code !== 0) throw new Error('pm2 jlist failed — cannot resolve current release dir')
+  const apps = JSON.parse(r.stdout || '[]')
+  const app = apps.find((a) => a.name === CONF.pm2App)
+  cachedCurrentDir = app?.pm2_env?.pm_cwd ?? ''
+  return cachedCurrentDir
+}
+
 const io = {
   exec: (cmd, opts) => sh(cmd, opts),
   fetchCheckRuns,
   now: () => Date.now(),
+  sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
   selfPid: () => process.pid,
   pidAlive: (pid) => {
     try {
@@ -91,12 +127,7 @@ const io = {
   rm: (p) => fsp.rm(p, { force: true, recursive: true }),
   mtime: async (p) => (await fsp.stat(p)).mtimeMs,
   readdir: (p) => fsp.readdir(p),
-  readlink: (p) => fsp.readlink(p).then((s) => s, () => ''),
-  symlinkSwap: async (target, link) => {
-    const tmp = `${link}.new`
-    await fsp.symlink(target, tmp)
-    await fsp.rename(tmp, link)
-  },
+  currentReleaseDir,
   diskFreeMb: async (p) => {
     const r = await sh(`df -Pm ${p} | tail -1 | awk '{print $4}'`)
     return Number(r.stdout.trim())
@@ -106,24 +137,40 @@ const io = {
     return Number(r.stdout.trim() || 0)
   },
   migrationHead: async () => {
-    // Read-only: latest applied migration name from the production DB.
-    const r = await sh(`sudo -n -u postgres psql -At -d cascool -c 'SELECT migration_name FROM "_prisma_migrations" ORDER BY finished_at DESC LIMIT 1'`)
+    // Read-only: latest applied migration name.
+    const r = await sh(`${CONF.psqlCmd} -c 'SELECT migration_name FROM "_prisma_migrations" ORDER BY finished_at DESC LIMIT 1'`)
     return r.stdout.trim()
   },
   stopApp: async () => {
-    await sh(`env -i HOME=${process.env.HOME} PATH=/usr/local/bin:/usr/bin:/bin pm2 stop ${CONF.pm2App}`)
+    const r = await sh(`${PM2_ENV} pm2 stop ${CONF.pm2App}`)
+    if (r.code !== 0) throw new Error(`pm2 stop ${CONF.pm2App} failed`)
   },
   restartApp: async (dir) => {
-    await sh(`env -i HOME=${process.env.HOME} PATH=/usr/local/bin:/usr/bin:/bin pm2 delete ${CONF.pm2App} >/dev/null 2>&1 || true`)
-    const r = await sh(`cd ${dir} && env -i HOME=${process.env.HOME} PATH=/usr/local/bin:/usr/bin:/bin PM2_MAX_MEMORY=1G NODE_OPTIONS=--max-old-space-size=512 pm2 start ecosystem.config.cjs && env -i HOME=${process.env.HOME} PATH=/usr/local/bin:/usr/bin:/bin pm2 save`)
-    if (r.code !== 0) throw new Error('pm2 re-register failed')
+    // The existing switch mechanism: re-register the app against a release
+    // dir via the repo's ecosystem.config.cjs (name/port/host/memory all
+    // overridable through the environment). env -i per the PM2 hygiene rule.
+    await sh(`${PM2_ENV} pm2 delete ${CONF.pm2App} >/dev/null 2>&1 || true`)
+    const env = [
+      `PM2_APP_NAME=${CONF.pm2App}`,
+      `PORT=${CONF.appPort}`,
+      `APP_HOST=${CONF.appHost}`,
+      'PM2_MAX_MEMORY=1G',
+      'NODE_OPTIONS=--max-old-space-size=512',
+    ].join(' ')
+    const r = await sh(`cd ${dir} && ${PM2_ENV} ${env} pm2 start ${dir}/ecosystem.config.cjs`)
+    if (r.code !== 0) throw new Error('pm2 re-register failed: ' + r.stderr.slice(0, 500))
+    if (CONF.pm2Save) {
+      const s = await sh(`${PM2_ENV} pm2 save`)
+      if (s.code !== 0) throw new Error('pm2 save failed')
+    }
   },
   appDbConnections: async () => {
-    const r = await sh(`sudo -n -u postgres psql -At -d cascool -c "SELECT count(*) FROM pg_stat_activity WHERE datname='cascool' AND application_name NOT LIKE 'psql%'"`)
+    const r = await sh(`${CONF.psqlCmd} -c "SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND application_name NOT LIKE 'psql%'"`)
     return Number(r.stdout.trim() || 0)
   },
   recordBaseline: async (sharedRoot) => {
-    const r = await sh(`sudo -n -u postgres psql -At -d cascool -c 'SELECT (SELECT count(*) FROM "User") || " " || (SELECT count(*) FROM "Post")'`)
+    const r = await sh(`${CONF.psqlCmd} -c 'SELECT (SELECT count(*) FROM "User") || chr(32) || (SELECT count(*) FROM "Post")'`)
+    if (r.code !== 0) throw new Error('baseline query failed: ' + r.stderr.slice(0, 200))
     await fsp.appendFile(`${sharedRoot}/maintenance-baselines.jsonl`, JSON.stringify({ ts: new Date().toISOString(), counts: r.stdout.trim() }) + '\n')
   },
   healthProbe: async (probe) => {
@@ -143,14 +190,16 @@ const io = {
         }),
         signal: AbortSignal.timeout(15_000),
       })
-      return res.status === 200
+      // production /mcp answers anonymous initialize with 401 (auth gate):
+      // both 200 and 401 prove the route is alive and enforcing auth
+      return res.status === 200 || res.status === 401
     }
     if (probe.kind === 'DB') {
-      const r = await sh(`sudo -n -u postgres psql -At -d cascool -c '${probe.url}'`)
+      const r = await sh(`${CONF.psqlCmd} -c '${probe.url}'`)
       return r.code === 0 && r.stdout.trim() === '1'
     }
     if (probe.kind === 'BUILD_ID') {
-      const r = await sh(`test -s ${CONF.currentLink}/.next/BUILD_ID`)
+      const r = await sh(`test -s ${probe.url}/.next/BUILD_ID`)
       return r.code === 0
     }
     throw new Error(`unknown probe kind ${probe.kind}`)
@@ -166,7 +215,6 @@ async function main() {
     sha: arg('sha'),
     requiredCheck: CONF.requiredCheck,
     releasesRoot: CONF.releasesRoot,
-    currentLink: CONF.currentLink,
     sharedRoot: CONF.sharedRoot,
     origin: CONF.origin,
     withMaintenance: flag('with-maintenance'),

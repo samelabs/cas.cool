@@ -150,7 +150,10 @@ export function planDeploy({ migrationCls, maintenanceRequested }) {
 export async function preflight(opts, io) {
   const fullSha = await resolveSha(opts.sha, io)
   const ci = await ciGate(fullSha, opts.requiredCheck, io)
-  const currentDir = await io.readlink(opts.currentLink)
+  const currentDir = await io.currentReleaseDir()
+  if (!currentDir) {
+    throw new DeployRefused('NO_CURRENT_RELEASE', 'cannot resolve the currently running release directory (PM2 cwd) — refusing to deploy blind')
+  }
   const currentShort = currentDir.split('/').pop()
   const currentSha = await resolveSha(currentShort, io)
   const migrations = await classifyMigrations(currentSha, fullSha, io)
@@ -181,17 +184,36 @@ export async function deploy(opts, io) {
   const short = pre.sha.slice(0, 7)
   const dir = `${opts.releasesRoot}/${short}`
   const lockPath = `${opts.releasesRoot}/.deploy-lock`
-  await acquireLock(lockPath, io)
   const journal = `${dir}/.deploy-state.json`
-  if (await io.exists(journal)) {
-    if (!opts.resume) {
-      throw new DeployRefused('DEPLOY_INTERRUPTED', `state journal exists at ${journal} — inspect it, then pass --resume to continue`, await io.readJson(journal))
-    }
-  }
+  await acquireLock(lockPath, io)
+  // Maintenance-window bookkeeping: a window that opens but never reaches
+  // the switch must be undone in the catch arm (restart the CURRENT release,
+  // clear the flag) — a stopped app must never be left behind.
+  let windowOpened = false
+  let switched = false
   try {
-    // 1) prepare the release directory (never mutates the online tree)
+    if (await io.exists(journal)) {
+      if (!opts.resume) {
+        throw new DeployRefused('DEPLOY_INTERRUPTED', `state journal exists at ${journal} — inspect it, then pass --resume to rerun clean`, await io.readJson(journal))
+      }
+      await io.rm(journal) // explicit --resume: rerun the whole pipeline clean
+    }
+
+    // 1) prepare the release directory (never mutates the online tree).
+    // A live release dir is more than the git tree: it carries .env (copied
+    // from the current release, never printed), the shared uploads symlinks
+    // and the PM2 log dir — exactly what the running releases have.
     await io.exec(`mkdir -p ${dir}`)
     await io.exec(`git archive ${pre.sha} | tar -x -C ${dir}`)
+    const prep = await io.exec(
+      `cp -p ${pre.current.dir}/.env ${dir}/.env && ` +
+        `ln -sfn ${opts.sharedRoot}/uploads ${dir}/public/uploads && ` +
+        `ln -sfn ${opts.sharedRoot}/private-uploads ${dir}/private-uploads && ` +
+        `mkdir -p ${dir}/logs`,
+    )
+    if (prep.code !== 0) {
+      throw new DeployRefused('RELEASE_PREP_FAILED', 'could not stage runtime files (.env copy / shared uploads symlinks / logs dir) — online version untouched', prep.stderr)
+    }
     await phase(journal, 'prepared', io)
 
     // 2) install + build INSIDE the new directory
@@ -209,7 +231,12 @@ export async function deploy(opts, io) {
     if (pre.plan.needsWindow) {
       await io.exec(`touch ${opts.sharedRoot}/maintenance.flag`)
       await io.stopApp()
-      const conns = await io.appDbConnections()
+      windowOpened = true
+      let conns = await io.appDbConnections()
+      for (let i = 0; conns !== 0 && i < 5; i++) {
+        await io.sleep(1000) // the stopped app needs a moment to close its sockets
+        conns = await io.appDbConnections()
+      }
       if (conns !== 0) {
         throw new DeployRefused('WRITE_STOP_FAILED', `app still holds ${conns} DB connections after stop — not migrating`, { conns })
       }
@@ -218,7 +245,7 @@ export async function deploy(opts, io) {
     if (pre.migrations.cls !== MIGRATION_CLASS.NONE) {
       const m = await io.exec(`cd ${dir} && npx prisma migrate deploy`, { envFile: `${dir}/.env`, timeoutMs: 600_000 })
       if (m.code !== 0) {
-        throw new DeployRefused('MIGRATION_FAILED', 'prisma migrate deploy failed — database left in migrated-or-partial state, see migration service output', m.stderr)
+        throw new DeployRefused('MIGRATION_FAILED', 'prisma migrate deploy failed — database left in migrated-or-partial state; recovery restarts the CURRENT release (old code on a possibly migrated schema — verify before reopening writes)', m.stderr)
       }
     }
     const migrationHeadAfter = await io.migrationHead(opts.sharedRoot)
@@ -247,13 +274,17 @@ export async function deploy(opts, io) {
     }
     await phase(journal, 'manifested', io)
 
-    // 5) atomic symlink swap + PM2 re-register (existing mechanism)
-    await io.symlinkSwap(dir, opts.currentLink)
+    // 5) switch = PM2 re-register on the new release dir. Production has NO
+    // symlink: /var/www/cas.cool is the git checkout (nginx serves /uploads/
+    // from it directly) and the app's identity IS its PM2 cwd. Re-registering
+    // the app against the new release dir is the existing switch mechanism.
     await io.restartApp(dir)
+    switched = true
     await phase(journal, 'switched', io)
 
-    // 6) health checks and the rollback decision
-    const acceptance = await healthChecks(opts, io)
+    // 6) health checks and the rollback decision (BUILD_ID probes THIS
+    // release dir — the app was just re-registered onto it)
+    const acceptance = await healthChecks(opts, io, dir)
     manifest.acceptance = acceptance
     await io.writeJson(`${dir}/deploy-manifest.json`, manifest)
     if (!acceptance.ok) {
@@ -261,39 +292,76 @@ export async function deploy(opts, io) {
         await phase(journal, 'needs-manual', io)
         throw new DeployRefused(
           'HEALTH_FAILED_NO_ROLLBACK',
-          'health checks failed after a DESTRUCTIVE migration — code rollback would desync schema; new version stays up for manual triage',
+          'health checks failed after a DESTRUCTIVE migration — code rollback would desync schema; new version stays up for manual triage and the maintenance flag is deliberately left UP',
           acceptance,
         )
       }
-      await io.symlinkSwap(pre.current.dir, opts.currentLink)
       await io.restartApp(pre.current.dir)
+      await io.exec(`rm -f ${opts.sharedRoot}/maintenance.flag`)
       await phase(journal, 'rolled-back', io)
-      throw new DeployRefused('HEALTH_FAILED_ROLLED_BACK', 'health checks failed — symlink and app restored to previous release (no DB rollback attempted)', acceptance)
+      await io.rm(journal)
+      throw new DeployRefused('HEALTH_FAILED_ROLLED_BACK', 'health checks failed — app re-registered on the previous release (no DB rollback attempted)', acceptance)
     }
     await phase(journal, 'verified', io)
 
-    // 7) retention — always keep the live dir plus keepReleases-1 predecessors
+    // 7) retention — always keep the live dir plus keepReleases-1 predecessors,
+    //    then conclude: clear the maintenance flag, journal and lock
     await retention(opts, pre, io)
+    await io.exec(`rm -f ${opts.sharedRoot}/maintenance.flag`)
+    await io.rm(journal)
     await io.rm(lockPath)
     return { ok: true, manifest, preflight: pre }
   } catch (err) {
+    if (windowOpened && !switched) {
+      // ANY failure between flag+stop and the switch (DeployRefused or a raw
+      // io error like a broken baseline query) must undo the half-open
+      // window: writes back on, current app back up.
+      const recovery = { flagCleared: false, appRestarted: false }
+      try {
+        await io.exec(`rm -f ${opts.sharedRoot}/maintenance.flag`)
+        recovery.flagCleared = true
+      } catch { /* flag left in place; outcome reported below */ }
+      try {
+        await io.restartApp(pre.current.dir)
+        recovery.appRestarted = true
+      } catch (e) {
+        recovery.restartError = String(e)
+      }
+      if (err && typeof err === 'object' && 'detail' in err && err.detail && typeof err.detail === 'object') {
+        err.detail.maintenanceRecovery = recovery
+      } else if (err instanceof Error) {
+        err.message += ` | maintenance-recovery=${JSON.stringify(recovery)}`
+      }
+    }
     await io.rm(lockPath).catch(() => {})
     throw err
   }
 }
 
-async function healthChecks(opts, io) {
+async function healthChecks(opts, io, dir) {
   const results = []
+  // pm2 start returns long before next.js boots: HTTP probes must retry
+  // within a bounded readiness window, or every healthy deploy would be
+  // falsely rolled back.
+  const probeWithRetry = async (probe, attempts = 15) => {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        if (await io.healthProbe(probe)) return true
+      } catch { /* connection refused while booting — retry */ }
+      await io.sleep(2000)
+    }
+    return false
+  }
   const probes = [
-    { name: 'home', kind: 'GET', url: `${opts.origin}/` },
-    { name: 'api', kind: 'GET', url: `${opts.origin}/api/posts?take=1` },
-    { name: 'mcp-initialize', kind: 'MCP', url: `${opts.origin}/mcp` },
+    { name: 'home', kind: 'GET', url: `${opts.origin}/`, retry: true },
+    { name: 'api', kind: 'GET', url: `${opts.origin}/api/posts?take=1`, retry: true },
+    { name: 'mcp-initialize', kind: 'MCP', url: `${opts.origin}/mcp`, retry: true },
     { name: 'db', kind: 'DB', url: 'SELECT 1' },
-    { name: 'build-marker', kind: 'BUILD_ID', url: '' },
+    { name: 'build-marker', kind: 'BUILD_ID', url: dir },
   ]
   for (const probe of probes) {
     try {
-      const ok = await io.healthProbe(probe)
+      const ok = probe.retry ? await probeWithRetry(probe) : await io.healthProbe(probe)
       results.push({ probe: probe.name, ok })
     } catch (err) {
       results.push({ probe: probe.name, ok: false, error: String(err) })
@@ -327,8 +395,13 @@ async function retention(opts, pre, io) {
 
 async function acquireLock(lockPath, io) {
   if (await io.exists(lockPath)) {
-    const lock = await io.readJson(lockPath)
-    if (io.pidAlive(lock.pid)) {
+    let lock = null
+    try {
+      lock = await io.readJson(lockPath)
+    } catch {
+      lock = null // unreadable/corrupt lock file — treat as stale, reclaim
+    }
+    if (lock && io.pidAlive(lock.pid)) {
       throw new DeployRefused('DEPLOY_LOCKED', `another deploy (pid ${lock.pid}, sha ${String(lock.sha).slice(0, 8)}) is running`, lock)
     }
     await io.rm(lockPath) // stale lock — reclaim
