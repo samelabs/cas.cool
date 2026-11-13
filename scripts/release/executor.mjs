@@ -189,9 +189,13 @@ export async function deploy(opts, io) {
   await acquireLock(lockPath, io)
   // Maintenance-window bookkeeping: a window that opens but never reaches
   // the switch must be undone in the catch arm (restart the CURRENT release,
-  // clear the flag) — a stopped app must never be left behind.
+  // clear the flag) — a stopped app must never be left behind. EXCEPTION:
+  // once a DESTRUCTIVE migration has been ATTEMPTED, the old version must
+  // never reopen writes against a possibly-incompatible database — the
+  // maintenance state stays and a human decides.
   let windowOpened = false
   let switched = false
+  let destructiveMigrationAttempted = false
   try {
     if (await io.exists(journal)) {
       if (!opts.resume) {
@@ -232,8 +236,10 @@ export async function deploy(opts, io) {
     const migrationHeadBefore = await io.migrationHead(opts.sharedRoot)
     if (pre.plan.needsWindow) {
       await io.exec(`touch ${opts.sharedRoot}/maintenance.flag`)
-      await io.stopApp()
+      // the flag is UP from here on: if anything below fails (even pm2 stop
+      // itself), the catch arm must clear it and bring the current app back
       windowOpened = true
+      await io.stopApp()
       let conns = await io.appDbConnections()
       for (let i = 0; conns !== 0 && i < 5; i++) {
         await io.sleep(1000) // the stopped app needs a moment to close its sockets
@@ -245,9 +251,10 @@ export async function deploy(opts, io) {
       await io.recordBaseline(opts.sharedRoot)
     }
     if (pre.migrations.cls !== MIGRATION_CLASS.NONE) {
+      if (pre.migrations.cls === MIGRATION_CLASS.DESTRUCTIVE) destructiveMigrationAttempted = true
       const m = await io.exec(`cd ${dir} && npx prisma migrate deploy`, { envFile: `${dir}/.env`, timeoutMs: 600_000 })
       if (m.code !== 0) {
-        throw new DeployRefused('MIGRATION_FAILED', 'prisma migrate deploy failed — database left in migrated-or-partial state; recovery restarts the CURRENT release (old code on a possibly migrated schema — verify before reopening writes)', m.stderr)
+        throw new DeployRefused('MIGRATION_FAILED', 'prisma migrate deploy failed — database left in migrated-or-partial state; DESTRUCTIVE: writes stay closed and the app stays stopped for manual triage (the old version must not reopen writes against a possibly incompatible schema)', m.stderr)
       }
     }
     const migrationHeadAfter = await io.migrationHead(opts.sharedRoot)
@@ -333,6 +340,19 @@ export async function deploy(opts, io) {
     await io.rm(lockPath)
     return { ok: true, manifest, preflight: pre }
   } catch (err) {
+    if (windowOpened && !switched && destructiveMigrationAttempted) {
+      // A DESTRUCTIVE migration was attempted and the run failed before the
+      // switch (migration error, manifest write failure, ...): the database
+      // may be migrated or partially migrated. The old version must NOT
+      // reopen writes. Maintenance flag stays UP, app stays STOPPED, human
+      // triage required.
+      await phase(journal, 'needs-manual', io).catch(() => {})
+      await io.rm(lockPath).catch(() => {})
+      if (err instanceof DeployRefused) {
+        err.message += ' | destructive-migration guard: maintenance flag left UP and app left STOPPED — manual triage required'
+      }
+      throw err
+    }
     if (windowOpened && !switched) {
       // ANY failure between flag+stop and the switch (DeployRefused or a raw
       // io error like a broken baseline query) must undo the half-open

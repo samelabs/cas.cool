@@ -331,11 +331,51 @@ describe('deploy failure containment', () => {
 
   it('migration failure inside the window also restores the current app', async () => {
     const s = makeIo()
+    s.controls.migrationDiff = ['prisma/migrations/20261112_add/migration.sql']
+    s.controls.migrateFails = true
+    const err = await refuse(deploy({ ...opts, withMaintenance: true }, s.io))
+    expect(err.code).toBe('MIGRATION_FAILED')
+    expect(s.calls.filter((c) => c.startsWith('RESTART-APP')).at(-1)).toBe(`RESTART-APP ${root}/releases/aaaaaaa`)
+    expect(await exists(`${root}/shared/maintenance.flag`)).toBe(false)
+  })
+
+  it('DESTRUCTIVE migration failure keeps maintenance: no restart, flag stays UP, needs-manual', async () => {
+    const s = makeIo()
     s.controls.migrationDiff = ['prisma/migrations/20261112_drop/migration.sql']
     s.controls.destructiveSql = true
     s.controls.migrateFails = true
     const err = await refuse(deploy({ ...opts, withMaintenance: true }, s.io))
     expect(err.code).toBe('MIGRATION_FAILED')
+    expect(err.message).toContain('destructive-migration guard')
+    // the old version must NOT be brought back against a possibly migrated DB
+    expect(s.calls.filter((c) => c.startsWith('RESTART-APP'))).toEqual([])
+    expect(await exists(`${root}/shared/maintenance.flag`)).toBe(true)
+    const journal = JSON.parse(await fsp.readFile(`${root}/releases/bbbbbbb/.deploy-state.json`, 'utf8')) as { phases: { phase: string }[] }
+    expect(journal.phases.at(-1)?.phase).toBe('needs-manual')
+    expect(await exists(`${root}/releases/.deploy-lock`)).toBe(false)
+  })
+
+  it('manifest write failure AFTER a destructive migration keeps maintenance and leaves the app stopped', async () => {
+    const s = makeIo()
+    s.controls.migrationDiff = ['prisma/migrations/20261112_drop/migration.sql']
+    s.controls.destructiveSql = true
+    s.controls.manifestWriteFails = true
+    const err = await refuse(deploy({ ...opts, withMaintenance: true }, s.io))
+    expect(err.code).toBe('MANIFEST_WRITE_FAILED')
+    expect(err.message).toContain('destructive-migration guard')
+    expect(s.calls.filter((c) => c.startsWith('RESTART-APP'))).toEqual([])
+    expect(await exists(`${root}/shared/maintenance.flag`)).toBe(true)
+    const journal = JSON.parse(await fsp.readFile(`${root}/releases/bbbbbbb/.deploy-state.json`, 'utf8')) as { phases: { phase: string }[] }
+    expect(journal.phases.at(-1)?.phase).toBe('needs-manual')
+  })
+
+  it('WRITE_STOP failure BEFORE any migration still restores the current app (DB untouched)', async () => {
+    const s = makeIo()
+    s.controls.migrationDiff = ['prisma/migrations/20261112_drop/migration.sql']
+    s.controls.destructiveSql = true
+    s.io.appDbConnections = async () => 3
+    const err = await refuse(deploy({ ...opts, withMaintenance: true }, s.io))
+    expect(err.code).toBe('WRITE_STOP_FAILED')
     expect(s.calls.filter((c) => c.startsWith('RESTART-APP')).at(-1)).toBe(`RESTART-APP ${root}/releases/aaaaaaa`)
     expect(await exists(`${root}/shared/maintenance.flag`)).toBe(false)
   })

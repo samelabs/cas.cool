@@ -48,7 +48,6 @@ const CONF = {
   repoDir: process.env.RELEASE_REPO_DIR ?? path.resolve(import.meta.dirname, '..', '..'),
   releasesRoot: process.env.RELEASES_ROOT ?? '/var/www/cascool-releases',
   sharedRoot: process.env.RELEASE_SHARED_ROOT ?? '/var/www/cascool-shared',
-  origin: process.env.RELEASE_ORIGIN ?? 'https://127.0.0.1',
   requiredCheck: process.env.RELEASE_REQUIRED_CHECK ?? 'checks',
   pm2App: process.env.RELEASE_PM2_APP ?? 'cascool',
   appPort: process.env.RELEASE_APP_PORT ?? '3000',
@@ -57,6 +56,11 @@ const CONF = {
   psqlCmd: process.env.RELEASE_PSQL_CMD ?? 'sudo -n -u postgres psql -At -d cascool',
   currentDirEnv: process.env.RELEASE_CURRENT_DIR ?? '',
 }
+
+// Health probes MUST reach the app directly: through nginx the maintenance
+// flag answers 503 and would falsely fail every probe during a maintenance
+// deploy. Default = the app port itself; RELEASE_ORIGIN still overrides.
+CONF.origin = process.env.RELEASE_ORIGIN ?? `http://${CONF.appHost}:${CONF.appPort}`
 
 const PM2_ENV = `env -i HOME=${process.env.HOME} PATH=/usr/local/bin:/usr/bin:/bin`
 
