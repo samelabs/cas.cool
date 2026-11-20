@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useState, memo } from 'react'
-import Link, { useLinkStatus } from 'next/link'
+import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { Avatar } from '@/components/ui/Avatar'
 import { PostActions } from '@/components/posts/PostActions'
@@ -41,21 +41,6 @@ export interface PostCardProps {
 
 const URL_RE = /https?:\/\/[^\s<>)\]]+[^\s<>)\].,;:!?]/g
 const CAS_RE = /\b\d{2,7}-\d{2}-\d\b/g
-
-/**
- * Instant click feedback for the card's post-detail link: a thin pulsing
- * bar at the card's top edge while the router fetches the /p/ segment.
- * useLinkStatus reads THIS link's navigation state (client-only, no
- * streaming/SSR change) — deliberately chosen over a loading.tsx segment,
- * which would flip missing-post responses from HTTP 404 to 200+noindex
- * (verified empirically and rejected in the 2026-11 perf round).
- * Must be rendered as a child of the <Link> it reports on.
- */
-function LinkPendingBar() {
-  const { pending } = useLinkStatus()
-  if (!pending) return null
-  return <span aria-hidden className="absolute inset-x-0 top-0 z-20 h-0.5 animate-pulse rounded bg-brand/70" />
-}
 // Mention regex lives in @/lib/mentions — shared verbatim with the server
 // write path so what the author typed and what got resolved can't drift.
 
@@ -254,11 +239,8 @@ export const PostCard = memo(function PostCard({ post, hideComment, replyingTo, 
       {/* prefetch stays false (conservative feed config): without a
           loading.js segment there is nothing to partially prefetch on a
           dynamic route, so auto prefetch would only add requests with no
-          measured benefit (verified 2026-11 perf round). Click feedback is
-          provided client-side by LinkPendingBar instead. */}
-      <Link href={postUrl(post)} scroll={false} prefetch={false} className="absolute inset-0 z-0" aria-label={t.postCard.openPost}>
-        <LinkPendingBar />
-      </Link>
+          measured benefit (verified 2026-11 perf round). */}
+      <Link href={postUrl(post)} scroll={false} prefetch={false} className="absolute inset-0 z-0" aria-label={t.postCard.openPost} />
 
       <div className="flex items-start gap-2.5 sm:gap-3">
         <Avatar src={author.avatar} name={displayName} username={author.username} size="md" href={`/u/${author.username}`} className="relative z-10" />
